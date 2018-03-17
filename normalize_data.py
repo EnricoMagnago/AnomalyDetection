@@ -110,7 +110,7 @@ def normalize_file(input_name, output_name):
             else:
                 print("missing items: " + str(line))
                 exit(1)
-            if measure == "NaN" or measure == "nan":
+            if measure == "NaN" or measure == "nan" or measure.strip() == "":
                 measure = -1
             code = parse_code(code)
             out.write("{};{};{}\n".format(write_date(date), code, measure))
