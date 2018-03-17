@@ -1,11 +1,19 @@
 # Prerequisites
 *.d
 
+# Dataset
+*.xlsx
+*.pdf
+dataset
+
+*.mat
+
 # Compiled Object files
 *.slo
 *.lo
 *.o
 *.obj
+*.class
 
 # Precompiled Headers
 *.gch
