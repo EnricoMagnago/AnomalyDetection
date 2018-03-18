@@ -1,12 +1,18 @@
 # Prerequisites
 *.d
-
 # Dataset
 *.xlsx
 *.pdf
 dataset*
 
+# Matlab
 *.mat
+
+# Python, swig
+*__*__
+*_wrap.cxx
+*DataLoader.py
+*DataTypes.py
 
 # Compiled Object files
 *.slo
