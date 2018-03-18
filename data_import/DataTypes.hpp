@@ -22,7 +22,7 @@ typedef std::array<double, 6> PowerMeasures;
 struct Data
 {
   std::vector<time_t> index_to_time;
-  std::vector<std::pair<TankMeasures, PowerMeasures>> measures;
+  std::vector<std::pair<TankMeasures, PowerMeasures> > measures;
 };
 
 
