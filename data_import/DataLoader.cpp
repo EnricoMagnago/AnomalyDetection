@@ -38,7 +38,7 @@ DataLoader::DataLoader(const std::string& root_dir) : files_()
 
 }
 
-void DataLoader::load_data(Data& data, const int log)
+void DataLoader::load_all(Data& data, const int log)
 {
   data.index_to_time.reserve(expected_measures);
   data.measures.reserve(expected_measures);
@@ -51,6 +51,29 @@ void DataLoader::load_data(Data& data, const int log)
     ++index;
   }
 }
+
+void DataLoader::load_subset(Data& data, const unsigned long max, const int log)
+{
+  /* usually a file contains around 60 samples, we might load 1 file in excess */
+  data.index_to_time.reserve(max + 60);
+  data.measures.reserve(max + 60);
+  size_t index = 0;
+  for (const std::pair<time_t, std::string>& it : files_) {
+    if (log != -1 && index % log == 0)
+      std::cout << "loading: " << data.index_to_time.size() << "/" << max << std::endl;
+    load_file(data, it.second);
+    ++index;
+    /* forcefully quit loop if we reach limit */
+    if (data.index_to_time.size() >= max)
+      break;
+  }
+
+  /* cut samples to the exact number,
+     we might have loaded a few more than requested */
+  data.index_to_time.resize(max);
+  data.measures.resize(max);
+}
+
 
 void DataLoader::load_file(Data& data, const std::string& file_name)
 {

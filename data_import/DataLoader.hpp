@@ -18,11 +18,23 @@ public:
   /* fill data by reading the files,
      in data the value -2 is used to identify
      missing or wrong measures.
+
+     log: tells after how many records to log the current advancement. -1: no log.
   */
-  void load_data(Data& data, const int log = -1);
+  void load_all(Data& data, const int log = 200);
+
+  /* fill data by reading the files,
+     in data the value -2 is used to identify
+     missing or wrong measures.
+
+     log: tells after how many records to log the current advancement. -1: no log.
+     max: number of samples to load.
+  */
+  void load_subset(Data& data, const unsigned long max = 100000, const int log = 200);
+
 
 private:
-  static constexpr unsigned int expected_measures = 15235628;
+  static constexpr unsigned int expected_measures = 634804;
 
   struct Comparator {
     bool operator()(const std::pair<time_t, std::string>& lhs,
