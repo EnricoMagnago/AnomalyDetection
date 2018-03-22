@@ -46,7 +46,15 @@ private:
   /* store set of files ordered by date */
   std::set<std::pair<time_t, std::string>, DataLoader::Comparator> files_;
 
-  void load_file(Data& data, const std::string& file_name);
+  void load_file(Data& data, const std::string& file_name) const;
+
+  /* parse line set date, return its index in the string */
+  std::size_t parse_line_date(const std::string& line, std::time_t& date) const;
+
+    void parse_line_data(const std::string& line, const std::size_t& date_index,
+                         TankMeasures&  measures,
+                         PowerMeasures& powers) const;
+
 };
 
 #endif /* DATA_LOADER_HPP__ */
