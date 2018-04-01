@@ -8,7 +8,7 @@
 enum TankType {TANK1 = 0, TANK2, TANK3};
 
 /* use to access SensorMeasures */
-enum SensorType {OXIGEN = 0, NITROGEN, SST, AMMONIA, VALVE, FLOW};
+enum SensorType {OXYGEN = 0, NITROGEN, SST, AMMONIA, VALVE, FLOW};
 
 typedef std::array<double, 6> SensorMeasures;
 typedef std::array<SensorMeasures, 3> TankMeasures;
