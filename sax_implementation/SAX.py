@@ -97,26 +97,6 @@ string = get_string_representation(dat)
 
 string_smoothed = smoothing(string)
 
-def get_alphabet_letters():
-	alphabet=""
-	for i in range(0,alphabet_size):
-		alphabet = alphabet + chr(ord('a')+i)
-	return alphabet;
-
-def get_permutations_list(alphabet):
-	#getting a list of pair of permutations
-	p = list(itertools.permutations(alphabet,2))
-	return p
-		
-
-
-def get_hash_table(alphabet):
-	hash_table = {}
-	permutation_list = get_permutations_list(alphabet)
-	for permutation in permutation_list:
-		hash_table[permutation[0]+""+permutation[1]] = []
-	return(hash_table)
-
 #getting first n alphabet letters
 alphabet = get_alphabet_letters();
 
