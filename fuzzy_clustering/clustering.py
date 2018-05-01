@@ -8,6 +8,7 @@ import DataTypes, DataLoader
 import numpy as np
 import skfuzzy as fuzz # requires scikit-fuzzy
 import time
+import pickle
 
 
 def load_data():
@@ -16,6 +17,9 @@ def load_data():
     #loader.load_subset(retval, 1000)
     loader.load_all(retval)
     return retval
+
+def data_index_from_window_index(window_index, window_number, step_size):
+    return (window_number * step_size) + window_index
 
 def get_np_arrays(data, window_size, step_size):
     assert(data.measures.size() > window_size)
@@ -32,19 +36,78 @@ def get_np_arrays(data, window_size, step_size):
     for window_index in range(0, window_number):
         if window_index % 10000 == 0:
             print("window {}/{};".format(window_index, window_number))
+        avg_oxygen = [0] * len(tanks_list)
+        oxygen_counter = [0] * len(tanks_list)
+        avg_nitrogen = [0] * len(tanks_list)
+        nitrogen_counter = [0] * len(tanks_list)
+        avg_sst = [0] * len(tanks_list)
+        sst_counter = [0] * len(tanks_list)
+        avg_ammonia = [0] * len(tanks_list)
+        ammonia_counter = [0] * len(tanks_list)
+        avg_flow = [0] * len(tanks_list)
+        flow_counter = [0] * len(tanks_list)
+        avg_valve = [0] * len(tanks_list)
+        valve_counter = [0] * len(tanks_list)
         for index in range(0, window_size):
-            data_index = window_index * window_size + index
+            # collect sum of values and their number to compute average.
+            data_index = data_index_from_window_index(index, window_index, step_size)
             for tank_id in tanks_list:
                 tank = data.measures[window_index][0][tank_id]
-                oxygen[tank_id][index][window_index] = tank[DataTypes.OXYGEN] if 0 <= tank[DataTypes.OXYGEN] <= 200 else np.nan
-                nitrogen[tank_id][index][window_index] = tank[DataTypes.NITROGEN] if 0 <= tank[DataTypes.NITROGEN] <= 200 else np.nan
-                sst[tank_id][index][window_index] = tank[DataTypes.SST] if 0 <= tank[DataTypes.SST] <= 200 else np.nan
-                ammonia[tank_id][index][window_index] = tank[DataTypes.AMMONIA] if 0 <= tank[DataTypes.AMMONIA] <= 200 else np.nan
-                valve[tank_id][index][window_index] = tank[DataTypes.VALVE] if 0 <= tank[DataTypes.VALVE] <= 200 else np.nan
-                flow[tank_id][index][window_index] = tank[DataTypes.FLOW] if 0 <= tank[DataTypes.FLOW] <= 200 else np.nan
-    print()
-    return oxygen, nitrogen, sst, ammonia, valve, flow
+                avg_oxygen[tank_id] += tank[DataTypes.OXYGEN] if 0 <= tank[DataTypes.OXYGEN] <= 200 else 0
+                oxygen_counter[tank_id] += 1 if 0 <= tank[DataTypes.OXYGEN] <= 200 else 0
+                avg_nitrogen[tank_id] += tank[DataTypes.NITROGEN] if 0 <= tank[DataTypes.NITROGEN] <= 200 else 0
+                nitrogen_counter[tank_id] += 1 if 0 <= tank[DataTypes.NITROGEN] <= 200 else 0
+                avg_sst[tank_id] += tank[DataTypes.SST] if 0 <= tank[DataTypes.SST] <= 200 else 0
+                sst_counter[tank_id] += 1 if 0 <= tank[DataTypes.SST] <= 200 else 0
+                avg_ammonia[tank_id] += tank[DataTypes.AMMONIA] if 0 <= tank[DataTypes.AMMONIA] <= 200 else 0
+                ammonia_counter[tank_id] += 1 if 0 <= tank[DataTypes.AMMONIA] <= 200 else 0
+                avg_flow[tank_id] += tank[DataTypes.FLOW] if 0 <= tank[DataTypes.FLOW] <= 200 else 0
+                flow_counter[tank_id] += 1 if 0 <= tank[DataTypes.FLOW] <= 200 else 0
+                avg_valve[tank_id] += tank[DataTypes.VALVE] if 0 <= tank[DataTypes.VALVE] <= 200 else 0
+                valve_counter[tank_id] += 1 if 0 <= tank[DataTypes.VALVE] <= 200 else 0
+        for tank_id in tanks_list:
+            # compute average
+            avg_oxygen[tank_id] = (avg_oxygen[tank_id] / oxygen_counter[tank_id]) if oxygen_counter[tank_id] > 0 else 0
+            avg_nitrogen[tank_id] = (avg_nitrogen[tank_id] / nitrogen_counter[tank_id]) if nitrogen_counter[tank_id] > 0 else 0
+            avg_sst[tank_id] = (avg_sst[tank_id] / sst_counter[tank_id]) if sst_counter[tank_id] > 0 else 0
+            avg_ammonia[tank_id] = (avg_ammonia[tank_id] / ammonia_counter[tank_id]) if ammonia_counter[tank_id] > 0 else 0
+            avg_flow[tank_id] = (avg_flow[tank_id] / flow_counter[tank_id]) if flow_counter[tank_id] > 0 else 0
+            avg_valve[tank_id] = (avg_valve[tank_id] / valve_counter[tank_id]) if valve_counter[tank_id] > 0 else 0
 
+        for index in range(0, window_size):
+            # collect data, replace nan values with the average.
+            data_index = data_index_from_window_index(index, window_index, step_size)
+            for tank_id in tanks_list:
+                tank = data.measures[data_index][0][tank_id]
+                oxygen[tank_id][index][window_index] = tank[DataTypes.OXYGEN] if 0 <= tank[DataTypes.OXYGEN] <= 200 else avg_oxygen[tank_id]
+                nitrogen[tank_id][index][window_index] = tank[DataTypes.NITROGEN] if 0 <= tank[DataTypes.NITROGEN] <= 200 else avg_nitrogen[tank_id]
+                sst[tank_id][index][window_index] = tank[DataTypes.SST] if 0 <= tank[DataTypes.SST] <= 200 else avg_sst[tank_id]
+                ammonia[tank_id][index][window_index] = tank[DataTypes.AMMONIA] if 0 <= tank[DataTypes.AMMONIA] <= 200 else avg_ammonia[tank_id]
+                valve[tank_id][index][window_index] = tank[DataTypes.VALVE] if 0 <= tank[DataTypes.VALVE] <= 200 else avg_valve[tank_id]
+                flow[tank_id][index][window_index] = tank[DataTypes.FLOW] if 0 <= tank[DataTypes.FLOW] <= 200 else avg_flow[tank_id]
+    print()
+    index_to_time = [0] * data.index_to_time.size()
+    for i in range(0, data.index_to_time.size()):
+        index_to_time[i] = DataLoader.time_to_string(data, i)
+    return [oxygen, nitrogen, sst, ammonia, valve, flow], index_to_time
+
+def cluster_data(data, n_centers, max_iter, error, fuzzyfication):
+    centroids, u, u0, d, _, iterations, fpc = fuzz.cluster.cmeans(data,
+                                                                 n_centers,
+                                                                 fuzzyfication,
+                                                                 error=error,
+                                                                 maxiter=max_iter,
+                                                                 init=None)
+    u = u ** fuzzyfication
+    reconstructed = np.empty_like(data.T)
+    for k in range(0, u.shape[1]):
+        u_sum = np.sum(u[:, k], 0)
+        numerator = np.array([np.fmax((u[cluster_index, k]*centroids[cluster_index])/u_sum, \
+                                      np.finfo(np.float64).eps) \
+                              for cluster_index in range(0, centroids.shape[0])])
+        reconstructed[k] = np.sum(numerator, 0)
+
+    return centroids, reconstructed.T
 
 
 def main(argv):
@@ -53,36 +116,89 @@ def main(argv):
     sensors_list = [DataTypes.OXYGEN, DataTypes.NITROGEN, DataTypes.SST, DataTypes.AMMONIA, DataTypes.VALVE, DataTypes.FLOW]
     sensors_names = ["oxygen", "nitrogen", "sst", "ammonia", "valve", "flow"]
 
-    loaded_data = load_data()
-    window_size = 10
-    step_size = 1
-    print("reshape data, window_size: {} ; step_size: {}".format(window_size, step_size))
-    arrays = get_np_arrays(loaded_data, window_size, step_size)
 
-    features_number = arrays[0][0].shape[0]
-    print("features number: {}".format(features_number))
+    window_size = 20
+    step_size = 5
+    dump_file_name = ['./reshaped_data_window{}_step_{}.dump'.format(window_size, step_size), \
+                      './centroids_window{}_step_{}.dump'.format(window_size, step_size), \
+                      './reconstructed_window{}_step_{}.dump'.format(window_size, step_size), \
+                      './anomaly_scores_window{}_step_{}.dump'.format(window_size, step_size)]
+
+    try:
+        with open(dump_file_name[0], 'rb') as f:
+            print("loading data...", end="")
+            vectors, index_to_time = pickle.load(f)
+            print("done")
+    except FileNotFoundError:
+        loaded_data = load_data()
+        print("reshape data, window_size: {} ; step_size: {}".format(window_size, step_size))
+        arrays, index_to_time = get_np_arrays(loaded_data, window_size, step_size)
+
+        features_number = arrays[0][0].shape[0]
+        samples_number  = arrays[0][0].shape[1]
+
+        vectors = [np.empty((features_number * len(sensors_list), samples_number))]*3
+        for tank_id in tanks_list:
+            for sensor_id in sensors_list:
+                for feature in range(0, features_number):
+                    vectors[tank_id][sensor_id * features_number + feature] = \
+                                                arrays[sensor_id][tank_id][feature]
+
+        with open(dump_file_name[0], 'wb') as f:
+            pickle.dump((vectors, index_to_time), f, pickle.HIGHEST_PROTOCOL)
+
+    features_number = vectors[0].shape[0]
+    samples_number  = vectors[0].shape[1]
 
     # clustering parameters
     n_centers = 3
     max_iter = 1000
     error = 0.005
     fuzzyfication = 2
-    print("compute clusters, n_centers: {}, max_iter: {}, error: {}, fuzzyfication: {}".format(n_centers, max_iter, error, fuzzyfication))
-    centroids = [[np.zeros((features_number, n_centers))]*len(tanks_list)]*len(sensors_list)
-    for sensor_id in sensors_list:
+    try:
+        with open(dump_file_name[1], 'rb') as centroid_f, open(dump_file_name[2], 'rb') as reconstructed_f:
+            print("loading centroids and reconstructed data...", end="")
+            centroids = pickle.load(centroid_f)
+            reconstructed_data = pickle.load(reconstructed_f)
+            print("done")
+    except FileNotFoundError:
+        print("computing centroids and reconstructed data...", end="")
+        centroids = [np.empty(features_number)]*len(tanks_list)
+        reconstructed_data = [np.empty(vectors[0].shape)]*len(tanks_list)
         for tank_id in tanks_list:
-            begin = time.time()
-            centroids[sensor_id][tank_id], _, _, _, _, _, _ = \
-                           fuzz.cluster.cmeans(arrays[sensor_id][tank_id],
-                                               n_centers, fuzzyfication,
-                                               error=error, maxiter=max_iter,
-                                               init=None)
-            print("computed centroid in: {}".format(time.time() - begin))
-    cntr_oxygen, cntr_nitrogen, cntr_sst, cntr_ammonia, cntr_valve, cntr_flow = centroids
-    for sensor_id in sensors_list:
-        print("\n\n{}".format(sensors_names[sensor_id]))
+            centroids[tank_id], reconstructed_data[tank_id] = \
+                        cluster_data(vectors[tank_id], n_centers,
+                                     max_iter, error, fuzzyfication)
+        print("done")
+        with open(dump_file_name[1], 'wb') as centroid_f, open(dump_file_name[2], 'wb') as reconstructed_f:
+            pickle.dump(centroids, centroid_f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(reconstructed_data, reconstructed_f, pickle.HIGHEST_PROTOCOL)
+
+    try:
+        with open(dump_file_name[3], 'rb') as scores_f:
+            print("loading anomaly scores...", end="")
+            anomaly_score, anomalies_ranking = pickle.load(scores_f)
+            print("done")
+    except FileNotFoundError:
+        anomaly_score = [np.empty(samples_number)]*len(tanks_list)
+        anomalies_ranking = [np.empty(samples_number)]*len(tanks_list)
         for tank_id in tanks_list:
-            print("\n{}\n{}".format(tanks_names[tank_id], centroids[sensor_id][tank_id]))
+            for index in range(0, samples_number):
+                anomaly_score[tank_id][index] = \
+                        np.linalg.norm(vectors[tank_id][:,index] - reconstructed_data[tank_id][:,index])
+
+        with open(dump_file_name[3], 'wb') as scores_f:
+            pickle.dump((anomaly_score, anomalies_ranking), scores_f, pickle.HIGHEST_PROTOCOL)
+
+    for tank_id in tanks_list:
+        anomaly_mean = np.mean(anomaly_score[tank_id])
+        anomaly_var = np.var(anomaly_score[tank_id])
+        anomaly_score[tank_id] = (anomaly_score[tank_id] - anomaly_mean) / anomaly_var
+        anomalies_ranking[tank_id] = np.flip(np.argsort(anomaly_score[tank_id]), axis=0)
+
+    for index in range(0, samples_number):
+        tanks = [index_to_time[anomalies_ranking[tank][index]] for tank in tanks_list]
+        print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
 
 if __name__ == "__main__":
     main(sys.argv)

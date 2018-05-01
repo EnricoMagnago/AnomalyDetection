@@ -11,6 +11,14 @@
 
 namespace fs = std::experimental::filesystem;
 
+std::string time_to_string(const Data& data, const size_t index)
+{
+  const time_t time = data.index_to_time[index];
+  std::stringstream s;
+  s << std::put_time(std::gmtime(&time), "%c %Z");
+  return s.str();
+}
+
 
 DataLoader::DataLoader(const std::string& root_dir) : files_()
 {

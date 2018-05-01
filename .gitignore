@@ -1,9 +1,11 @@
 # Prerequisites
 *.d
+
 # Dataset
 *.xlsx
 *.pdf
 dataset*
+*.dump
 
 # Matlab
 *.mat

@@ -6,6 +6,8 @@
     #include "../DataLoader.hpp"
 %}
 
+std::string time_to_string(const Data& data, const size_t index);
+
 class DataLoader
 {
 public:
