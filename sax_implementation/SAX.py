@@ -6,19 +6,22 @@ import DataTypes
 import collections
 import itertools
 import random
+import datetime
 
 #parameters for SAX
-alphabet_size = 4
+alphabet_size = 5
 paa_size = 4
 #for now put equal to paa_size
 substring_size = 4 
 #projection size
 prj_size = 2
-prj_iterations = 1
+prj_iterations = 10
+
+anomaly_threshold = 0.01
 
 win_size = 20
 threshold_freq = 0.7
-load_size = 5000
+load_size = 1000
 
 def get_string_representation(dict_data):
 
@@ -139,6 +142,25 @@ def put_in_bucket(hash_table_substring, string_smoothed):
 
 	return hash_table_substring
 
+def analyzed_bucket(hash_table_substring, total_elements):
+	bucket_with_anomalies = {}
+	for key, values in hash_table_substring.items():
+		if len(values)/total_elements <= anomaly_threshold:
+			print(key+" "+str(len(values)/total_elements))
+			bucket_with_anomalies[key] = values
+	return bucket_with_anomalies
+
+def update_anomalies(anomalies, begin, end):
+	for index, period in anomalies.items():
+		if begin < period[1]:
+			if begin > period[0]:
+				if end > period[1]:
+					(anomalies[index])[1] = end
+					return anomalies
+	index = len(anomalies.keys())
+	anomalies[index] = [begin,end]
+	return anomalies
+
 
 #loading data
 loader = DataLoader.DataLoader("../dataset/")
@@ -149,6 +171,11 @@ loader.load_subset(data,load_size,100)
 
 #get measures for oxygen
 tank_j_oxigen = [data.measures[i][0][1][0] for i in range(0, len(data.measures))]
+load_size = len(tank_j_oxigen)
+
+begin_date = datetime.datetime.fromtimestamp(data.index_to_time[0])
+end_date = datetime.datetime.fromtimestamp(data.index_to_time[load_size -1 ])
+print("Loading data from %s to %s " % (begin_date, end_date))
 
 dat = sax_via_window(tank_j_oxigen, win_size, paa_size, alphabet_size, nr_strategy = 'exactly', z_threshold = 0.01)
 
@@ -161,12 +188,42 @@ string_smoothed = smoothing(string)
 alphabet = get_alphabet_letters()
 
 #creating hash table indexed by all of substrings of length k
-hash_table_substring = get_hash_table(alphabet)
+hash_table_substrings = get_hash_table(alphabet)
 
 #fill hash table by applying random projection
-hash_table_substring = put_in_bucket(hash_table_substring, string_smoothed)
+hash_table_substrings = put_in_bucket(hash_table_substrings, string_smoothed)
 
 total = 0
-for key, values in hash_table_substring.items():
+#total2 = []
+for key, values in hash_table_substrings.items():
 	total = total + len(values)
+	#total2 = total2  + list(set(values))
 	print("Bucket "+key+ " Number of elements "+ str(len(values)))
+
+buckets_with_anomalies = analyzed_bucket(hash_table_substrings, total)
+#print(buckets_with_anomalies)
+strings_anomalies = []
+for key, values in buckets_with_anomalies.items():
+	strings_anomalies = strings_anomalies + list(set(values))
+strings_anomalies = list(set(strings_anomalies))
+
+#dict containing following <index_anomaly, period_anomaly(begin-end)>
+anomalies_period = {};
+
+for string_anomaly in strings_anomalies:
+	subsequences = len(string_smoothed)//4
+	for index in range(len(string_smoothed)):
+		start = paa_size*index
+		end = start + paa_size
+		if (end < len(string_smoothed)):
+			string = string_smoothed[start:end]
+
+			if string_anomaly == string:
+				begin_date =datetime.datetime.fromtimestamp(data.index_to_time[index])
+				end_date =datetime.datetime.fromtimestamp(data.index_to_time[index+win_size-1])
+				anomalies_period = update_anomalies(anomalies_period, begin_date, end_date)
+				
+
+for key, period in anomalies_period.items():
+	print("Anomaly %i from %s to %s " % (key, period[0], period[1]))
+
