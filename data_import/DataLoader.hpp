@@ -5,8 +5,12 @@
 #include <string>
 #include <set>
 #include <ctime>
+#include <iostream>
+
 
 std::string time_to_string(const Data& data, const size_t index);
+
+std::string anomaly_to_string(const Anomaly& anomaly);
 
 class DataLoader
 {
@@ -34,7 +38,6 @@ public:
   */
   void load_subset(Data& data, const unsigned long max = 100000, const int log = 200);
 
-
 private:
   static constexpr unsigned int expected_measures = 634804;
 
@@ -48,15 +51,41 @@ private:
   /* store set of files ordered by date */
   std::set<std::pair<time_t, std::string>, DataLoader::Comparator> files_;
 
+  struct AnomalyComparator {
+    bool operator()(const Anomaly& lhs,
+                    const Anomaly& rhs) const
+    {
+      if (lhs.begin == rhs.begin) {
+        if (lhs.end == rhs.end) {
+          if (lhs.tanks.size() == rhs.tanks.size()) {
+            if (lhs.description.compare(rhs.description) == 0) {
+              std::cerr << "found 2 equal Anomalies" << std::endl;
+              exit(1);
+            }
+            return lhs.description.compare(rhs.description) < 0;
+          }
+          return lhs.tanks.size() < rhs.tanks.size();
+        }
+        return lhs.end < rhs.end;
+      }
+      return lhs.begin < rhs.begin;
+    }
+  };
+  std::set<Anomaly, AnomalyComparator> anomalies;
+
+
   void load_file(Data& data, const std::string& file_name) const;
 
   /* parse line set date, return its index in the string */
   std::size_t parse_line_date(const std::string& line, std::time_t& date) const;
 
-    void parse_line_data(const std::string& line, const std::size_t& date_index,
-                         TankMeasures&  measures,
-                         PowerMeasures& powers) const;
+  void parse_line_data(const std::string& line, const std::size_t& date_index,
+                       TankMeasures&  measures,
+                       PowerMeasures& powers) const;
 
+  void parse_anomalies(std::ifstream& input);
+
+  void add_anomalies(Data& data, const time_t time, const size_t index) const;
 };
 
 #endif /* DATA_LOADER_HPP__ */

@@ -8,6 +8,8 @@
 
 std::string time_to_string(const Data& data, const size_t index);
 
+std::string anomaly_to_string(const Anomaly& anomaly);
+
 class DataLoader
 {
 public:

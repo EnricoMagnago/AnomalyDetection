@@ -20,6 +20,21 @@ std::string time_to_string(const Data& data, const size_t index)
 }
 
 
+std::string anomaly_to_string(const Anomaly& anomaly)
+{
+  std::stringstream retval;
+  retval  << std::put_time(std::gmtime(&anomaly.begin), "%c %Z")
+          << " - " << std::put_time(std::gmtime(&anomaly.end), "%c %Z");
+
+  retval << "\t[ ";
+  for (const TankType tank : anomaly.tanks) {
+    retval << tank << " ";
+  }
+  retval << "]\t" << anomaly.description;
+
+  return retval.str();
+}
+
 DataLoader::DataLoader(const std::string& root_dir) : files_()
 {
   /* recursive iteration: iterate over the leaves of the file system */
@@ -38,15 +53,25 @@ DataLoader::DataLoader(const std::string& root_dir) : files_()
       /* file name represents a date, parse the date,
          insert pair (date, name) into the set,
          set is ordered by date */
-      struct std::tm tm;
-      std::memset(&tm, 0, sizeof(struct std::tm));
-      date_str >> std::get_time(&tm, "%Y-%m-%d-h%H");
-      const std::time_t time = mktime(&tm);
+      if (date_str.str().compare("anomalies") == 0) {
+        std::ifstream anomalies_file(file_name);
+        if (!anomalies_file.good()) {
+          std::cerr << "could not open file: " << file_name << std::endl;
+          exit(1);
+        }
+        DataLoader::parse_anomalies(anomalies_file);
+        anomalies_file.close();
+      }
+      else {
+        struct std::tm tm;
+        std::memset(&tm, 0, sizeof(struct std::tm));
+        date_str >> std::get_time(&tm, "%Y-%m-%d-h%H");
+        const std::time_t time = mktime(&tm);
 
-      this->files_.insert(std::make_pair(time, file_name));
+        this->files_.insert(std::make_pair(time, file_name));
+      }
     }
   }
-
 }
 
 void DataLoader::load_all(Data& data, const int log)
@@ -128,6 +153,9 @@ void DataLoader::load_file(Data& data, const std::string& file_name) const
         data.measures.push_back(std::make_pair(std::move(measures),
                                                std::move(powers)));
 
+        /* check for related anomalies,
+         add anomalies related too old_date with index data.measures.size() -1 */
+        this->add_anomalies(data, old_date, data.measures.size() - 1);
         /* re initialize local structures,
            fill with -2: used to signal missing values */
         measures = TankMeasures();
@@ -192,4 +220,73 @@ void DataLoader::parse_line_data(const std::string& line, const std::size_t& dat
       /* this measure refers to power, can not be negative, if it's negative set to -2 */
       powers[sensor_id] = (measured_value < 0)? -2 : measured_value;
     }
+}
+
+void DataLoader::parse_anomalies(std::ifstream& input)
+{
+  std::string description;
+  /* parse description */
+  input >> description;
+
+  while(input.good()) {
+    Anomaly anomaly;
+
+    /* parse description */
+    anomaly.description = description;
+    std::string tmp;
+    /* parse begin date */
+    {
+      input >> tmp;
+      std::istringstream date_str(tmp);
+      struct std::tm tm;
+      std::memset(&tm, 0, sizeof(struct std::tm));
+      date_str >> std::get_time(&tm, "%d/%m/%Y:%H");
+      anomaly.begin = mktime(&tm);
+    }
+
+    /* parse end date */
+    {
+      input >> tmp;
+      std::istringstream date_str(tmp);
+      struct std::tm tm;
+      std::memset(&tm, 0, sizeof(struct std::tm));
+      date_str >> std::get_time(&tm, "%d/%m/%Y:%H");
+      anomaly.end = mktime(&tm);
+    }
+
+    /* parse list of tanks */
+    char c;
+    int tank;
+    input >> c; // open bracket.
+    while (c != ']') {
+      input >> c;
+      tank = c - '0';
+      if (tank < 1 || tank > 3) {
+        std::cerr << " unknown tank id: " << tank << std::endl;
+        exit(1);
+      }
+      anomaly.tanks.push_back(static_cast<TankType>(tank - 1));
+      input >> c;
+    }
+    this->anomalies.insert(std::move(anomaly));
+
+    /* parse description */
+    input >> description;
+  }
+}
+
+
+void DataLoader::add_anomalies(Data& data,
+                               const time_t time,
+                               const size_t index) const
+{
+  std::vector<const Anomaly*> list;
+  for (const Anomaly& it : this->anomalies) {
+    if (it.begin > time) break;
+    if (it.begin <= time && it.end >= time) {
+      list.push_back(&it);
+    }
+  }
+  if (!list.empty())
+    data.anomaly_indexes.push_back(std::make_pair(index, list));
 }

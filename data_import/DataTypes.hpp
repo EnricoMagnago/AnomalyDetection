@@ -15,6 +15,15 @@ typedef std::array<SensorMeasures, 3> TankMeasures;
 typedef std::array<double, 6> PowerMeasures;
 
 
+/* structure used to represent an anomaly */
+struct Anomaly
+{
+  time_t begin;
+  time_t end;
+  std::string description;
+  std::vector<TankType> tanks;
+};
+
 /* structure used to represent data,
    the indexes correspond: data at measures[i] has been collected
        in date index_to_time[i];
@@ -23,6 +32,7 @@ struct Data
 {
   std::vector<time_t> index_to_time;
   std::vector<std::pair<TankMeasures, PowerMeasures> > measures;
+  std::vector<std::pair<size_t, std::vector<const Anomaly*> > > anomaly_indexes;
 };
 
 
