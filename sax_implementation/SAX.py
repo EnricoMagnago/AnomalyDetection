@@ -3,31 +3,54 @@ from saxpy.sax import sax_via_window
 import string
 import DataLoader
 import DataTypes
+import json
+import sys
 import collections
 import itertools
 import random
 import datetime
 
-#parameters for SAX
-alphabet_size = 5
-paa_size = 4
-#for now put equal to paa_size
-substring_size = 4 
-#projection size
-prj_size = 2
-prj_iterations = 10
 
-anomaly_threshold = 0.01
+#loading configuration from file
+def load_configuration():
+	with open('configuration.json', 'r') as f:
+		configuration = json.load(f)
 
-win_size = 20
-threshold_freq = 0.7
-load_size = 1000
+	parameters = {}
 
-def get_string_representation(dict_data):
+	#loading parameters for each category
+	p_dataset = configuration['parameters']['dataset']
+	p_sax = configuration['parameters']['sax'] 
+	p_smoothing = configuration['parameters']['smoothing'] 
+	p_projection = configuration['parameters']['random_projections']
+
+	#loading single parameters for each category
+	parameters['load_size'] = p_dataset['load_size']
+	parameters['tank'] =  p_dataset['tank']
+	parameters['sensor_type'] = p_dataset['sensor_type']
+	parameters['power_type'] = p_dataset['power_type']
+
+	parameters['alphabet_size'] =  p_sax['alphabet_size']
+	parameters['paa_size'] = p_sax['paa_size']
+	parameters['window_size'] = p_sax['window_size']
+
+	parameters['threshold_freq'] = p_smoothing['threshold']
+
+	parameters['prj_size'] = p_projection['prj_size']
+	parameters['prj_iterations'] = p_projection['prj_iterations']
+	parameters['anomaly_threshold'] = p_projection['anomaly_threshold']
+
+	return parameters
+
+
+	#print(configuration['parameters']['dataset'])
+	#exit()
+
+def get_string_representation(dict_data, load_size, window_size):
 
 	string = ""
 
-	num_subsq = load_size - win_size
+	num_subsq = load_size - window_size
 	for i in range (num_subsq):
 		for key, values in dict_data.items():
 			if i in values:
@@ -38,7 +61,7 @@ def get_string_representation(dict_data):
 	
 	
 
-def smoothing(string):
+def smoothing(string, threshold_freq):
 
 	#get charachters and counter (occurences)
 	char_counter = collections.Counter(string)
@@ -72,13 +95,13 @@ def smoothing(string):
 	return (string_smoothed)
 
 
-def get_alphabet_letters():
+def get_alphabet_letters(alphabet_size):
 	alphabet=""
 	for i in range(0,alphabet_size):
 		alphabet = alphabet + chr(ord('a')+i)
 	return alphabet;
 
-def get_cartesian_list(alphabet):
+def get_cartesian_list(alphabet, prj_size):
 	if prj_size <= len(alphabet):
 		p = [x for x in itertools.product(alphabet, repeat=2)]
 	else:
@@ -87,16 +110,16 @@ def get_cartesian_list(alphabet):
 	return p
 		
 
-def get_hash_table(alphabet):
+def get_hash_table(alphabet, prj_size):
 	hash_table = {}
-	cartesian_list = get_cartesian_list(alphabet)
+	cartesian_list = get_cartesian_list(alphabet, prj_size)
 	
 	#create keys for hash_table
 	for element in cartesian_list:
 		hash_table[element[0]+""+element[1]] = []
 	return(hash_table)
 
-def get_random_positions():
+def get_random_positions(prj_size, substring_size):
 
 	#getting list of random positions
 	random_positions = []
@@ -116,13 +139,13 @@ def get_random_positions():
 
 
 
-def put_in_bucket(hash_table_substring, string_smoothed):
+def put_in_bucket(hash_table_substring, string_smoothed,prj_iterations,prj_size, substring_size):
 	#number of not overlapping substrings of size substring_size 
 	not_overlapping_substrings = len(string_smoothed) // substring_size
 
 
 	for iteation in range (prj_iterations):
-		random_positions = get_random_positions()
+		random_positions = get_random_positions(prj_size, substring_size)
 
 		#max_bound (find substring till reach it)
 		max_bound = len(string_smoothed) - substring_size
@@ -142,9 +165,10 @@ def put_in_bucket(hash_table_substring, string_smoothed):
 
 	return hash_table_substring
 
-def analyzed_bucket(hash_table_substring, total_elements):
+def analyzed_bucket(hash_table_substring, total_elements, anomaly_threshold):
 	bucket_with_anomalies = {}
 	for key, values in hash_table_substring.items():
+		print("Bucket %s freq %f "%(key, len(values)/total_elements))
 		if len(values)/total_elements <= anomaly_threshold:
 			print(key+" "+str(len(values)/total_elements))
 			bucket_with_anomalies[key] = values
@@ -161,69 +185,111 @@ def update_anomalies(anomalies, begin, end):
 	anomalies[index] = [begin,end]
 	return anomalies
 
+def main(argv):
 
-#loading data
-loader = DataLoader.DataLoader("../dataset/")
-data = DataTypes.Data()
+	#load configuration
+	parameters = load_configuration()
 
-#loader.load_all(data,200)
-loader.load_subset(data,load_size,100)
+	#load parameters
 
-#get measures for oxygen
-tank_j_oxigen = [data.measures[i][0][1][0] for i in range(0, len(data.measures))]
-load_size = len(tank_j_oxigen)
+	#dataset
+	load_size = parameters['load_size']
+	
 
-begin_date = datetime.datetime.fromtimestamp(data.index_to_time[0])
-end_date = datetime.datetime.fromtimestamp(data.index_to_time[load_size -1 ])
-print("Loading data from %s to %s " % (begin_date, end_date))
+	#SAX
+	alphabet_size = parameters['alphabet_size']
+	paa_size = parameters['paa_size']
+	window_size = parameters['window_size']
 
-dat = sax_via_window(tank_j_oxigen, win_size, paa_size, alphabet_size, nr_strategy = 'exactly', z_threshold = 0.01)
+	#smoothing
+	threshold_freq = parameters['threshold_freq']
 
-string = get_string_representation(dat)
+	#projections
+	prj_size = parameters['prj_size']
+	prj_iterations = parameters ['prj_iterations']
+	anomaly_threshold = parameters['anomaly_threshold']
 
-#get smoothed string
-string_smoothed = smoothing(string)
 
-#getting first n alphabet letters
-alphabet = get_alphabet_letters()
+	#for now put equal to paa_size
+	substring_size = paa_size
 
-#creating hash table indexed by all of substrings of length k
-hash_table_substrings = get_hash_table(alphabet)
+	#loading data
+	loader = DataLoader.DataLoader("../dataset/")
+	data = DataTypes.Data()
 
-#fill hash table by applying random projection
-hash_table_substrings = put_in_bucket(hash_table_substrings, string_smoothed)
+	#loader.load_all(data,200)
+	loader.load_subset(data,load_size,100)
 
-total = 0
-#total2 = []
-for key, values in hash_table_substrings.items():
-	total = total + len(values)
-	#total2 = total2  + list(set(values))
-	print("Bucket "+key+ " Number of elements "+ str(len(values)))
+	#period from which extract anomalies
+	begin_date = datetime.datetime.fromtimestamp(data.index_to_time[0])
+	end_date = datetime.datetime.fromtimestamp(data.index_to_time[load_size -1 ])
 
-buckets_with_anomalies = analyzed_bucket(hash_table_substrings, total)
-#print(buckets_with_anomalies)
-strings_anomalies = []
-for key, values in buckets_with_anomalies.items():
-	strings_anomalies = strings_anomalies + list(set(values))
-strings_anomalies = list(set(strings_anomalies))
+	if parameters['power_type'] == -1:
+		tank = parameters['tank']
+		sensor_type = parameters ['sensor_type']
+		#print(data.measures[0])
+		print("Loading of %i tank %i  data from %s to %s " % (sensor_type, tank, begin_date, end_date))
+		s_values = [data.measures[i][0][tank][sensor_type] for i in range(0, len(data.measures))]
+	else:
+		power_type = parameters['power_type']
+		print("Loading measures of power %i from %s to %s " % (power_type, begin_date, end_date))
+		s_values = [data.measures[i][1][power_type] for i in range(0, len(data.measures))]
 
-#dict containing following <index_anomaly, period_anomaly(begin-end)>
-anomalies_period = {};
+	
 
-for string_anomaly in strings_anomalies:
-	subsequences = len(string_smoothed)//4
-	for index in range(len(string_smoothed)):
-		start = paa_size*index
-		end = start + paa_size
-		if (end < len(string_smoothed)):
-			string = string_smoothed[start:end]
 
-			if string_anomaly == string:
-				begin_date =datetime.datetime.fromtimestamp(data.index_to_time[index])
-				end_date =datetime.datetime.fromtimestamp(data.index_to_time[index+win_size-1])
-				anomalies_period = update_anomalies(anomalies_period, begin_date, end_date)
-				
 
-for key, period in anomalies_period.items():
-	print("Anomaly %i from %s to %s " % (key, period[0], period[1]))
 
+	dat = sax_via_window(s_values, window_size, paa_size, alphabet_size, nr_strategy = 'exactly', z_threshold = 0.01)
+
+	string = get_string_representation(dat, load_size, window_size)
+	
+	#get smoothed string
+	string_smoothed = smoothing(string, threshold_freq)
+
+	#getting first n alphabet letters
+	alphabet = get_alphabet_letters(alphabet_size)
+
+	#creating hash table indexed by all of substrings of length k
+	hash_table_substrings = get_hash_table(alphabet, prj_size)
+
+	#fill hash table by applying random projection
+	hash_table_substrings = put_in_bucket(hash_table_substrings, string_smoothed, prj_iterations, prj_size, substring_size)
+
+	total = 0
+
+	for key, values in hash_table_substrings.items():
+		total = total + len(values)
+		#print("Bucket "+key+ " Number of elements "+ str(len(values)))
+
+	buckets_with_anomalies = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
+
+	#print(buckets_with_anomalies)
+
+	strings_anomalies = []
+	for key, values in buckets_with_anomalies.items():
+		strings_anomalies = strings_anomalies + list(set(values))
+	strings_anomalies = list(set(strings_anomalies))
+
+	#dict containing following <index_anomaly, period_anomaly(begin-end)>
+	anomalies_period = {};
+
+	for string_anomaly in strings_anomalies:
+		subsequences = len(string_smoothed)//substring_size
+		for index in range(len(string_smoothed)):
+			start = paa_size*index
+			end = start + substring_size
+			if (end < len(string_smoothed)):
+				string = string_smoothed[start:end]
+
+				if string_anomaly == string:
+					begin_date =datetime.datetime.fromtimestamp(data.index_to_time[index])
+					end_date =datetime.datetime.fromtimestamp(data.index_to_time[index+window_size-1])
+					anomalies_period = update_anomalies(anomalies_period, begin_date, end_date)
+					
+	for key, period in anomalies_period.items():
+		print("Anomaly %i from %s to %s " % (key, period[0], period[1]))
+
+
+if __name__ == "__main__":
+	main(sys.argv)

@@ -1,0 +1,24 @@
+{
+	"parameters":{
+		"dataset":{
+            "load_size": 1000,
+			"tank":1,
+			"sensor_type":0,
+			"power_type":0
+
+		},
+		"sax":{
+			"alphabet_size":4,
+			"paa_size":4,
+			"window_size":20
+		},
+		"smoothing":{
+			"threshold":0.7
+		},
+		"random_projections":{
+			"prj_size": 2,
+			"prj_iterations":10,
+			"anomaly_threshold":0.03
+		}
+	}
+}
