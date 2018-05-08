@@ -185,6 +185,14 @@ def update_anomalies(anomalies, begin, end):
 	anomalies[index] = [begin,end]
 	return anomalies
 
+def write_anomalies_on_file (anomalies):
+	file = open("anomalies.txt", 'w+')
+
+	for key, period in anomalies.items():
+		file.write("Anomaly "+str(key) + " from "+ str(period[0]) +" to "+ str(period[1])+ "\n")
+
+	file.close()
+
 def main(argv):
 
 	#load configuration
@@ -286,10 +294,10 @@ def main(argv):
 					begin_date =datetime.datetime.fromtimestamp(data.index_to_time[index])
 					end_date =datetime.datetime.fromtimestamp(data.index_to_time[index+window_size-1])
 					anomalies_period = update_anomalies(anomalies_period, begin_date, end_date)
-					
-	for key, period in anomalies_period.items():
-		print("Anomaly %i from %s to %s " % (key, period[0], period[1]))
-
+	
+	#for key, period in anomalies_period.items():
+	#	print("Anomaly %i from %s to %s " % (key, period[0], period[1]))
+	write_anomalies_on_file(anomalies_period)
 
 if __name__ == "__main__":
 	main(sys.argv)
