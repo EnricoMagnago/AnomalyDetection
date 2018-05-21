@@ -1,6 +1,7 @@
 {
 	"parameters":{
 		"dataset":{
+			"path": "../../dataset",
             "load_size": 1000,
 			"tank":1,
 			"sensor_type":0,
@@ -10,7 +11,9 @@
 		"sax":{
 			"alphabet_size":4,
 			"paa_size":20,
-			"window_size":100
+			"window_size":100,
+			"step":5,
+			"substring_size":4
 		},
 		"smoothing":{
 			"threshold":0.7
