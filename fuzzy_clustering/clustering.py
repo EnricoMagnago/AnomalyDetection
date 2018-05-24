@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-# add path in order to be able to find modules.
+# add path to find modules.
 sys.path.insert(0, "../data_import/python_interface")
 
 import DataTypes, DataLoader
@@ -91,6 +91,43 @@ def get_np_arrays(data, window_size, step_size):
         index_to_time[i] = DataLoader.time_to_string(data, i)
     return [oxygen, nitrogen, sst, ammonia, valve, flow], index_to_time
 
+def compute_autocorrelation_vectors(data):
+    """ input data: 6 sensors * 3 tanks * (window_size * samples)
+    input vector is a matrix with shape (window_size, N)
+    output matrix has shape (features, N)
+    we compute the auto-correlation coefficient for each sensor in each tank
+    separately then we concatenate the features of the 6 sensor to get a single
+    vector that represents the state of a tank in a particular instant. """
+    sensors_number = len(data)
+    tanks_number = len(data[0])
+    window_length = data[0][0].shape[0]
+    samples_number = data[0][0].shape[1]
+    output = [np.empty((window_length * sensors_number, samples_number), dtype=np.float64)] * tanks_number
+    for tank_id in range(0, tanks_number):
+        for sensor_id in range(0, sensors_number):
+            means = np.mean(data[sensor_id][tank_id], axis=0)
+            for sample_index in range(0, samples_number):
+                mean = means[sample_index]
+                for curr_lag in (1, window_length):
+                    output_feature_index = curr_lag - 1
+                    variance = 0
+                    for feature_id in range (0, window_length):
+                        variance += ((data[sensor_id][tank_id][feature_id][sample_index] - mean) ** 2)
+                    for feature_id in range (0, window_length - curr_lag):
+                        lagged_feature_id = feature_id + curr_lag
+                        output[tank_id][output_feature_index][sample_index] += \
+                                ((data[sensor_id][tank_id][feature_id][sample_index] - mean) * \
+                                (data[sensor_id][tank_id][lagged_feature_id][sample_index] - mean))
+
+                    if variance > 0 and \
+                       output[tank_id][output_feature_index][sample_index] / variance > np.finfo(np.float64).eps and \
+                       output[tank_id][output_feature_index][sample_index] / variance < np.finfo(np.float64).max:
+                        output[tank_id][output_feature_index][sample_index] /= variance
+                    else:
+                        output[tank_id][output_feature_index][sample_index] = -1
+    return output
+
+
 def cluster_data(data, n_centers, max_iter, error, fuzzyfication):
     centroids, u, u0, d, _, iterations, fpc = fuzz.cluster.cmeans(data,
                                                                  n_centers,
@@ -127,7 +164,7 @@ def main(argv):
     try:
         with open(dump_file_name[0], 'rb') as f:
             print("loading data...", end="")
-            vectors, index_to_time = pickle.load(f)
+            vectors, arrays, index_to_time = pickle.load(f)
             print("done")
     except FileNotFoundError:
         loaded_data = load_data()
@@ -145,7 +182,7 @@ def main(argv):
                                                 arrays[sensor_id][tank_id][feature]
 
         with open(dump_file_name[0], 'wb') as f:
-            pickle.dump((vectors, index_to_time), f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump((vectors, arrays, index_to_time), f, pickle.HIGHEST_PROTOCOL)
 
     features_number = vectors[0].shape[0]
     samples_number  = vectors[0].shape[1]
@@ -199,6 +236,36 @@ def main(argv):
     for index in range(0, samples_number):
         tanks = [index_to_time[anomalies_ranking[tank][index]] for tank in tanks_list]
         print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
+
+
+    # SECOND PART: compute distances based on auto-correlation.
+    print("\n\n--------- AUTO CORRELATION ---------")
+    auto_correlation_centroids = [np.empty(features_number)]*len(tanks_list)
+    auto_correlation_reconstructed_data = [np.empty(vectors[0].shape)]*len(tanks_list)
+
+    auto_correlation_vectors = compute_autocorrelation_vectors(arrays)
+    auto_correlation_centroids[tank_id], auto_correlation_reconstructed_data[tank_id] = \
+                        cluster_data(auto_correlation_vectors[tank_id], n_centers,
+                                     max_iter, error, fuzzyfication)
+
+    auto_correlation_anomaly_score = [np.empty(samples_number)]*len(tanks_list)
+    auto_correlation_anomalies_ranking = [np.empty(samples_number)]*len(tanks_list)
+    for tank_id in tanks_list:
+        for index in range(0, samples_number):
+            auto_correlation_anomaly_score[tank_id][index] = \
+                        np.linalg.norm(auto_correlation_vectors[tank_id][:,index] - auto_correlation_reconstructed_data[tank_id][:,index])
+
+    for tank_id in tanks_list:
+        anomaly_mean = np.mean(auto_correlation_anomaly_score[tank_id])
+        anomaly_var = np.var(auto_correlation_anomaly_score[tank_id])
+        auto_correlation_anomaly_score[tank_id] = (auto_correlation_anomaly_score[tank_id] - anomaly_mean) / anomaly_var
+        auto_correlation_anomalies_ranking[tank_id] = np.flip(np.argsort(auto_correlation_anomaly_score[tank_id]), axis=0)
+
+    for index in range(0, samples_number):
+        tanks = [index_to_time[auto_correlation_anomalies_ranking[tank][index]] for tank in tanks_list]
+        print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
+
+    import pdb; pdb.set_trace()
 
 if __name__ == "__main__":
     main(sys.argv)
