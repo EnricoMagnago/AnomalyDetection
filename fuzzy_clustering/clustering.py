@@ -233,9 +233,9 @@ def main(argv):
         anomaly_score[tank_id] = (anomaly_score[tank_id] - anomaly_mean) / anomaly_var
         anomalies_ranking[tank_id] = np.flip(np.argsort(anomaly_score[tank_id]), axis=0)
 
-    for index in range(0, samples_number):
-        tanks = [index_to_time[anomalies_ranking[tank][index]] for tank in tanks_list]
-        print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
+    # for index in range(0, samples_number):
+    #     tanks = [index_to_time[anomalies_ranking[tank][index]] for tank in tanks_list]
+    #     print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
 
 
     # SECOND PART: compute distances based on auto-correlation.
@@ -261,11 +261,21 @@ def main(argv):
         auto_correlation_anomaly_score[tank_id] = (auto_correlation_anomaly_score[tank_id] - anomaly_mean) / anomaly_var
         auto_correlation_anomalies_ranking[tank_id] = np.flip(np.argsort(auto_correlation_anomaly_score[tank_id]), axis=0)
 
+    # for index in range(0, samples_number):
+    #     tanks = [index_to_time[auto_correlation_anomalies_ranking[tank][index]] for tank in tanks_list]
+    #     print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
+
+    coefficient = 1
+    final_score = [(anomaly_score[tank] * coefficient + auto_correlation_anomaly_score[tank]) / (coefficient + 1) \
+                       for tank in tanks_list]
+
+    final_ranking = [np.flip(np.argsort(final_score[tank]), axis=0) for tank in tanks_list]
     for index in range(0, samples_number):
-        tanks = [index_to_time[auto_correlation_anomalies_ranking[tank][index]] for tank in tanks_list]
+        tanks = [index_to_time[final_ranking[tank][index]] for tank in tanks_list]
         print("{};\ttank1: {};\ttank2: {};\ttank3:{};".format(index, *tanks))
 
     import pdb; pdb.set_trace()
+
 
 if __name__ == "__main__":
     main(sys.argv)
