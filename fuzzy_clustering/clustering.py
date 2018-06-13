@@ -301,21 +301,20 @@ def main(argv):
     except FileNotFoundError:
         final_anomaly_scores = [np.empty(samples_number)]*len(tanks_list)
         for tank in tanks_list:
+            tank_min = float('nan')
+            tank_max = float('nan')
             for sample in range(0, samples_number):
                 final_anomaly_scores[tank][sample] = (anomaly_score[tank][sample] * fusion_coefficient + \
                      auto_correlation_anomaly_score[tank][sample]) / (fusion_coefficient + 1)
+                tank_min = min(final_anomaly_scores[tank][sample], tank_min)
+                tank_max = max(final_anomaly_scores[tank][sample], tank_max)
+            for sample in range(0, samples_number):
+                final_anomaly_scores[tank][sample] = (final_anomaly_scores[tank][sample] - tank_min) / (tank_max - tank_min)
 
         with open(dump_file_name[5], 'wb') as final_scores_f:
             pickle.dump(final_anomaly_scores, final_scores_f, pickle.HIGHEST_PROTOCOL)
 
     final_ranking = [np.flip(np.argsort(final_anomaly_scores[tank]), axis=0) for tank in tanks_list]
-    for index in range(0, samples_number):
-        print("{};".format(index), end="")
-        for tank in tanks_list:
-            print("\ttank{}: {} - {};".format(tank, final_anomaly_scores[tank][index], index_to_time[final_ranking[tank][index]]), end="")
-        print("")
-
-    import pdb; pdb.set_trace()
 
 
 if __name__ == "__main__":

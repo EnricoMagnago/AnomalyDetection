@@ -32,6 +32,10 @@ struct Data
 {
   std::vector<time_t> index_to_time;
   std::vector<std::pair<TankMeasures, PowerMeasures> > measures;
+  /* each element of the vector is a pair (index, anomalies) where:
+     index is the measure index and
+     anomalies is the list of anomalies to which the measure at position `index` belogs.
+   */
   std::vector<std::pair<size_t, std::vector<const Anomaly*> > > anomaly_indexes;
 };
 
