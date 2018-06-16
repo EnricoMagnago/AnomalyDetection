@@ -12,10 +12,10 @@ int main(){
   std::cout << data.measures.back().first[1][0];
   for (const auto& it : data.anomaly_indexes) {
     const size_t index = it.first;
-    const std::vector<const Anomaly*>& anomalies = it.second;
+    const std::vector<Anomaly>& anomalies = it.second;
     std::cout << "\n" << time_to_string(data, index) << ":\n";
-    for (const Anomaly* anomaly : anomalies) {
-      std::cout << "\t" << anomaly_to_string(*anomaly) << "\n";
+    for (const Anomaly& anomaly : anomalies) {
+      std::cout << "\t" << anomaly_to_string(anomaly) << "\n";
     }
   }
 }

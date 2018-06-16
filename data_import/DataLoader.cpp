@@ -27,7 +27,7 @@ std::string anomaly_to_string(const Anomaly& anomaly)
           << " - " << std::put_time(std::gmtime(&anomaly.end), "%c %Z");
 
   retval << "\t[ ";
-  for (const TankType tank : anomaly.tanks) {
+  for (const int tank : anomaly.tanks) {
     retval << tank << " ";
   }
   retval << "]\t" << anomaly.description;
@@ -265,7 +265,7 @@ void DataLoader::parse_anomalies(std::ifstream& input)
         std::cerr << " unknown tank id: " << tank << std::endl;
         exit(1);
       }
-      anomaly.tanks.push_back(static_cast<TankType>(tank - 1));
+      anomaly.tanks.push_back(tank - 1);
       input >> c;
     }
     this->anomalies.insert(std::move(anomaly));
@@ -280,11 +280,11 @@ void DataLoader::add_anomalies(Data& data,
                                const time_t time,
                                const size_t index) const
 {
-  std::vector<const Anomaly*> list;
+  std::vector<Anomaly> list;
   for (const Anomaly& it : this->anomalies) {
     if (it.begin > time) break;
     if (it.begin <= time && it.end >= time) {
-      list.push_back(&it);
+      list.push_back(it);
     }
   }
   if (!list.empty())
