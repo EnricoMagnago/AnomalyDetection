@@ -2,7 +2,7 @@
 	"parameters":{
 		"dataset":{
 			"path": "../../dataset",
-            "load_size": 1000,
+			"load_size": 1000,
 			"tank":1,
 			"sensor_type":0,
 			"power_type":-1

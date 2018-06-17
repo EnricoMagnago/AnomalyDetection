@@ -159,10 +159,10 @@ def put_in_bucket(hash_table_substring, string_smoothed, begin_window, prj_itera
 	not_overlapping_substrings = len(string_smoothed) // substring_size
 	
 	projections_positions_seen = []
-	#print("BEFORE "+ str(projections_positions_seen))
+
 	for iteration in range (prj_iterations):
 		random_positions, projections_positions_seen = get_random_positions(prj_size, projections_positions_seen, substring_size)
-		#print("after "+ str(projections_positions_seen))
+		
 		begin_in_serie = begin_window
 		
 		for i in range (0, not_overlapping_substrings):
@@ -193,34 +193,51 @@ def put_in_bucket(hash_table_substring, string_smoothed, begin_window, prj_itera
 
 def analyzed_bucket(hash_table_substring, total_elements, anomaly_threshold):
 	bucket_with_anomalies = {}
+	bucket_freq = {}
 	for key, values in hash_table_substring.items():
-		#print("Bucket %s freq %s "%(key,str(len(values)/total_elements)))
 		bucket_elements = len(values) 
+		bucket_freq[key] = bucket_elements/total_elements
 		if bucket_elements/total_elements <= anomaly_threshold and not bucket_elements == 0 :
-			#print(key+" "+str(len(values)/total_elements))
 			bucket_with_anomalies[key] = values
-	return bucket_with_anomalies
+	return bucket_with_anomalies, bucket_freq
 
-def update_anomalies(anomalies, begin, end):
-	for index, period in anomalies.items():
-		if begin < period[1]:
-			if begin > period[0]:
-				if end > period[1]:
-					(anomalies[index])[1] = end
-					return anomalies
-	index = len(anomalies.keys())
-	anomalies[index] = [begin,end]
-	return anomalies
+def get_unique_tuple(hash_table_substrings):
+	unique_tuple = []
+	for key, values in hash_table_substrings.items():
+		if values:
+			for tup in values:
+				unique_tuple.append(tup)
 
-def write_anomalies_on_file (anomalies, time):
-	file = open("anomalies.txt", 'w+')
+	return set(unique_tuple)
 
-	for index, anomaly in enumerate(anomalies):
-		begin_date =datetime.datetime.fromtimestamp(time[anomaly[1]])
-		end_date = datetime.datetime.fromtimestamp(time[anomaly[2]])
-		file.write("Anomaly "+str(index) + " from "+ str(begin_date) +" to "+ str(end_date) + "\n")
+def getting_score (hash_table_substrings, buckets_with_anomalies, n_buckets_anomalies):
+	unique_tuple = get_unique_tuple(hash_table_substrings)
+	avg_score = 0;
 
-	file.close()
+	#for each tuple count how many items it appears in an bucket with anomalies
+	for tup in unique_tuple:
+		is_in_n_buckets = 0
+		for key, values in buckets_with_anomalies.items():
+			for item in values:
+				if tup[0] == item[0] and tup[1] == item[1] and tup[2] == item[2]:
+					is_in_n_buckets  = is_in_n_buckets  + 1
+					break
+		#calculate score
+		avg_score = avg_score + (is_in_n_buckets/n_buckets_anomalies)/len(unique_tuple)
+
+	return round(avg_score,2)
+
+			 
+
+#def write_anomalies_on_file (anomalies, time):
+#	file = open("anomalies.txt", 'w+')
+
+#	for index, anomaly in enumerate(anomalies):
+#		begin_date =datetime.datetime.fromtimestamp(time[anomaly[1]])
+#		end_date = datetime.datetime.fromtimestamp(time[anomaly[2]])
+#		file.write("Anomaly "+str(index) + " from "+ str(begin_date) +" to "+ str(end_date) + "\n")
+
+#	file.close()
 
 def main(argv):
 
@@ -282,59 +299,51 @@ def main(argv):
 	#creating hash table indexed by all of substrings of length k
 	hash_table_substrings = get_hash_table(alphabet, prj_size)
 
-	anomalies = []
+	#list containg score for each window
+	anomalies_score = []
 
 	for index in range(0,len_serie,step):
 		begin = index
 		end = begin + window_size
-		#print("before "+ str(hash_table_substrings))
+		
 		if end < len_serie:
 			window_values = s_values[begin:end]
 			window_znorm = znorm(s_values)
 			window_paa = paa(window_znorm, paa_size)
 			window_string = ts_to_string(window_paa, cuts_for_asize(alphabet_size))
 
+
 			#each character of the string corresponds to k values of the series
 			k = window_size//paa_size
+			
 			
 			#get smoothed string
 			window_smoothed = smoothing(window_string, threshold_freq)
 
 
 			#fill hash table by applying random projection
-			#print(window_smoothed)
 			hash_table_substrings = put_in_bucket(hash_table_substrings, window_smoothed, begin, prj_iterations, prj_size, substring_size, k)
-			#print(hash_table_substrings)
-			
 
 			total = 0
 			for key, values in hash_table_substrings.items():
 				total = total + len(values)
-				#print("Bucket "+key+ " Number of elements "+ str(len(values)))
 
-			buckets_with_anomalies = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
-
-			strings_anomalies = []
-			for key, values in buckets_with_anomalies.items():
-				strings_anomalies = strings_anomalies + list(set(values))
-			strings_anomalies = list(set(strings_anomalies))
+			buckets_with_anomalies, bucket_freq = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
+			#number of bucket with anomalies
+			n_buckets_anomalies = len(buckets_with_anomalies.keys())
 			
-			#keep tracks of current anomalies found
-			anomalies = anomalies + strings_anomalies
+			#getting score for current window
+			avg_window_score = getting_score(hash_table_substrings, buckets_with_anomalies, n_buckets_anomalies)
+			anomalies_score.append(avg_window_score)
 
 
 			#reset table
 			hash_table_substrings = get_hash_table(alphabet, prj_size)
 
-
-			#buckets_with_anomalies = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
-			
 		else:
 			break
 
-
-	write_anomalies_on_file(anomalies, data.index_to_time)
-	
+	print(anomalies_score)
 
 if __name__ == "__main__":
 	main(sys.argv)
