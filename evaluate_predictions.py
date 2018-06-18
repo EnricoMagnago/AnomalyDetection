@@ -52,8 +52,12 @@ def weighted_mean_squared_error(anomaly_scores, window_anomalies, expected_norma
             assert(0 <= found <= 1)
             # this is an error
             if expected != found >= threshold:
-                # compute squared distance from threshold
-                threshold_distance = (found - threshold)**2
+                # compute squared distance from threshold, normalize to get number between 0 and 1.
+                threshold_distance = abs(found - threshold)
+                # here we normalize with respect to the size of the interval of the error
+                # if we expected 1, we predicted normal -> errors are in [0; threshold]
+                # if we expected 0, we predicted anomaly -> errors are in [threshold; 1]
+                threshold_distance /= (threshold if expected == 1 else 1 - threshold)
                 error_weight = expected_normal if expected == 0 else expected_anomaly
                 error += (error_weight * threshold_distance)
         mean_errors[tank_id] = error / (len(window_anomalies[tank_id]) * max(expected_normal, expected_anomaly))
@@ -125,7 +129,7 @@ def main(argv):
     confusion_matrix = confusion_matrices(anomaly_scores, window_anomalies, threshold)
 
     # dump confusion matrices.
-    print("-- confusion matrices:\n\t{}\t\t{}\n\t{}\t{}".format("corr_anom", "norm_class_as_anom", "anom_class_an_norm", "corr_norm"))
+    print("-- confusion matrices:\n\t{}\t\t{}\n\t{}\t{}".format("correct anomaly", "expected normal", "expected anomaly", "correct normal"))
     for tank_id in range(0, len(window_anomalies)):
         print("\ntank: {}".format(tank_id + 1))
         print("  {}\t{}\n  {}\t{}".format(confusion_matrix[tank_id][0][0], confusion_matrix[tank_id][0][1], \
