@@ -41,9 +41,10 @@ def weighted_mean_squared_error(anomaly_scores, window_anomalies, expected_norma
     assert(expected_normal >= 0 and expected_anomaly >= 0)
     assert(expected_normal + expected_anomaly > 0)
     assert(0 < threshold < 1)
-    mean_errors = [0, 0, 0]
+    mean_errors = [(0, 0), (0, 0), (0, 0)]
     for tank_id in range(0, len(window_anomalies)):
-        error = 0
+        l1_error = 0
+        l2_error = 0
         for window_id in range(0, len(window_anomalies[tank_id])):
             # 1 if anomaly, 0 if normal.
             expected = int(window_anomalies[tank_id][window_id] != 0)
@@ -59,8 +60,10 @@ def weighted_mean_squared_error(anomaly_scores, window_anomalies, expected_norma
                 # if we expected 0, we predicted anomaly -> errors are in [threshold; 1]
                 threshold_distance /= (threshold if expected == 1 else 1 - threshold)
                 error_weight = expected_normal if expected == 0 else expected_anomaly
-                error += (error_weight * threshold_distance)
-        mean_errors[tank_id] = error / (len(window_anomalies[tank_id]) * max(expected_normal, expected_anomaly))
+                l1_error += (error_weight * threshold_distance)
+                l2_error += (error_weight * (threshold_distance**2))
+        mean_errors[tank_id] = (l1_error / (len(window_anomalies[tank_id]) * max(expected_normal, expected_anomaly)), \
+                                math.sqrt(l2_error / (len(window_anomalies[tank_id]) * max(expected_normal, expected_anomaly))))
 
     return mean_errors
 
@@ -143,7 +146,7 @@ def main(argv):
 
     print("\n\nerrors, threshold: {}; error expected normal: {}; error expected anomaly: {}".format(threshold, expected_normal_weight, expected_anomaly_weight))
     for tank_id in range(0, len(window_anomalies)):
-        print("error for tank {} : {}".format(tank_id + 1, errors[tank_id]))
+        print("error for tank {} := l1: {}; l2: {}".format(tank_id + 1, errors[tank_id][0], errors[tank_id][1]))
 
 
 
