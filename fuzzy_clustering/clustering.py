@@ -168,21 +168,24 @@ def main(argv):
     sensors_list = [DataTypes.OXYGEN, DataTypes.NITROGEN, DataTypes.SST, DataTypes.AMMONIA, DataTypes.VALVE, DataTypes.FLOW]
     sensors_names = ["oxygen", "nitrogen", "sst", "ammonia", "valve", "flow"]
 
+    if (len(argv) != 7):
+        print("usage: {} window_size step_size clusters fuzzyfication auto_corr_clusters auto_corr_fuzzyfication".format(argv[0]))
+        exit(1)
 
-    window_size = 20
-    step_size = 5
+    window_size = int(argv[1])
+    step_size = int(argv[2])
     fusion_coefficient = 1
 
     # clustering parameters
-    n_centers = 3
+    n_centers = int(argv[3])
     max_iter = 1000
     error = 0.005
-    fuzzyfication = 2
+    fuzzyfication = int(argv[4])
 
-    autocorr_n_centers = 3
+    autocorr_n_centers = int(argv[5])
     autocorr_max_iter = 1000
     autocorr_error = 0.005
-    autocorr_fuzzyfication = 2
+    autocorr_fuzzyfication = int(argv[6])
 
     dump_file_name = ['./{}_{}_{}_{}_reshaped_data_window{}_step{}.dump'.format(n_centers, max_iter, error, fuzzyfication, window_size, step_size), \
                       './{}_{}_{}_{}_centroids_window{}_step{}.dump'.format(n_centers, max_iter, error, fuzzyfication, window_size, step_size), \
