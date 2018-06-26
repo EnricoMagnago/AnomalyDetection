@@ -105,8 +105,8 @@ def main(argv):
     window_size = int(argv[1])
     window_step = int(argv[2])
     anomaly_scores_file = argv[3]
-    expected_normal_weight = float(argv[5]) if len(argv) > 5 else 0.4
-    expected_anomaly_weight = float(argv[6]) if len(argv) > 6 else 0.6
+    expected_normal_weight = float(argv[5]) if len(argv) > 5 else 0.5
+    expected_anomaly_weight = float(argv[6]) if len(argv) > 6 else 0.5
 
     if threshold >= 1 or threshold <= 0:
         print("threshold must in (0; 1)")
