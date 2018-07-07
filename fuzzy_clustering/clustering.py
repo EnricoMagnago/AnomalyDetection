@@ -10,12 +10,19 @@ import skfuzzy as fuzz # requires scikit-fuzzy
 import time
 import math
 import pickle
+import pathlib
+from concurrent.futures import ThreadPoolExecutor
+
+tanks_list = [DataTypes.TANK1, DataTypes.TANK2, DataTypes.TANK3]
+tanks_names = ["tank1", "tank2", "tank3"]
+sensors_list = [DataTypes.OXYGEN, DataTypes.NITROGEN, DataTypes.SST, DataTypes.AMMONIA, DataTypes.VALVE, DataTypes.FLOW]
+sensors_names = ["oxygen", "nitrogen", "sst", "ammonia", "valve", "flow"]
 
 
 def load_data():
     retval = DataTypes.Data()
     loader = DataLoader.DataLoader("../dataset/")
-    #loader.load_subset(retval, 1000)
+    #loader.load_subset(retval, 5000)
     loader.load_all(retval)
     return retval
 
@@ -164,205 +171,151 @@ def cluster_data(data, n_centers, max_iter, error, fuzzyfication):
 
     return centroids, reconstructed.T
 
-
-def main(argv):
-    # if (len(argv) != 7 and len(argv) != 1):
-    #     print("usage: {} window_size step_size clusters fuzzyfication auto_corr_clusters auto_corr_fuzzyfication".format(argv[0]))
-    #     exit(1)
-
-    window_size_list = [10, 20, 40, 60, 80, 100]
-    step_size_list = [4, 6, 8, 12, 16, 20, 24, 28]
-    n_centers_list = [2, 3, 5, 7, 9]
-    fuzzyfication_list = [1, 2, 3, 4]
-
-#    window_size = int(argv[1])
-#    step_size = int(argv[2])
-    fusion_coefficient = 1
-
-    # clustering parameters
-#    n_centers = int(argv[3])
-    max_iter = 1000
-    error = 0.005
-#    fuzzyfication = int(argv[4])
-
-#    autocorr_n_centers = int(argv[5])
-    autocorr_max_iter = 1000
-    autocorr_error = 0.005
-#    autocorr_fuzzyfication = int(argv[6])
-
-    loaded_data = load_data()
-
-    parameters_gen = ((w_size, step_size, n_centers, fuzzyf, autocorr_n_centers, autocorr_fuzzyf) \
-                      for w_size in window_size_list \
-                      for step_size in step_size_list if step_size < w_size \
-                      for n_centers in n_centers_list \
-                      for fuzzyf in fuzzyfication_list \
-                      for autocorr_n_centers in n_centers_list \
-                      for autocorr_fuzzyf in fuzzyfication_list)
-
-    for window_size, step_size, n_centers, fuzzyfication, autocorr_n_centers, autocorr_fuzzyfication in parameters_gen:
-        print("\n\nparameters:\n\twindow_size: {}\n\tstep_size: {}\n\tn_centers: {}\n\tfuzzyfication: {}".format(window_size, step_size, n_centers, fuzzyfication))
-        retval = run(loaded_data, window_size, step_size, n_centers, fuzzyfication, autocorr_n_centers, autocorr_fuzzyfication, fusion_coefficient, max_iter, error, autocorr_max_iter, autocorr_error)
-        if not retval:
-            print("Error with params: w_size: {}; step: {}; centers: {}; fuzzyf: {}; autoc_centers: {}; autoc_fuzzyf: {};".format(window_size, step_size, n_centers, fuzzyfication, autocorr_n_centers, autocorr_fuzzyfication))
-
-def run(loaded_data, window_size, step_size, n_centers, fuzzyfication, autocorr_n_centers, autocorr_fuzzyfication, fusion_coefficient, max_iter, error, autocorr_max_iter, autocorr_error):
-    tanks_list = [DataTypes.TANK1, DataTypes.TANK2, DataTypes.TANK3]
-    tanks_names = ["tank1", "tank2", "tank3"]
-    sensors_list = [DataTypes.OXYGEN, DataTypes.NITROGEN, DataTypes.SST, DataTypes.AMMONIA, DataTypes.VALVE, DataTypes.FLOW]
-    sensors_names = ["oxygen", "nitrogen", "sst", "ammonia", "valve", "flow"]
-
-    dump_file_name = ['./{}_{}_{}_{}_reshaped_data_window{}_step{}.dump'.format(n_centers, max_iter, error, fuzzyfication, window_size, step_size), \
-                './{}_{}_{}_{}_centroids_window{}_step{}.dump'.format(n_centers, max_iter, error, fuzzyfication, window_size, step_size), \
-                './{}_{}_{}_{}_reconstructed_window{}_step{}.dump'.format(n_centers, max_iter, error, fuzzyfication, window_size, step_size), \
-                './{}_{}_{}_{}_anomaly_scores_window{}_step{}.dump'.format(n_centers, max_iter, error, fuzzyfication, window_size, step_size), \
-                './{}_{}_{}_{}_auto_correlation_anomaly_scores_window{}_step{}.dump'.format(autocorr_n_centers, autocorr_max_iter, autocorr_error, autocorr_fuzzyfication, window_size, step_size), \
-                './{}_{}_{}_{}_final_anomaly_scores_window{}_step{}_fusion_coefficient{}.dump'.format(autocorr_n_centers, autocorr_max_iter, autocorr_error, autocorr_fuzzyfication, window_size, step_size, fusion_coefficient)]
-
-    try:
-        with open(dump_file_name[0], 'rb') as f:
-            #print("loading data...", end="")
-            vectors, arrays, index_to_time = pickle.load(f)
-            #print("done")
-    except FileNotFoundError:
-        #loaded_data = load_data()
-        #print("reshape data, window_size: {} ; step_size: {}".format(window_size, step_size))
-        """ arrays[sensor_id][tank_id][position_in_window][window_id]
-        arrays is a list of sensor measures. It has a list for each sensor.
-        each sensor has measures for each tank
-        for each tank there are window_number samples
-        each sample has window_size features. """
-        arrays, index_to_time = get_np_arrays(loaded_data, window_size, step_size)
-
-        features_number = arrays[0][0].shape[0]
-        samples_number  = arrays[0][0].shape[1]
-
-        assert(features_number == window_size)
-        assert(samples_number == ((loaded_data.measures.size() - window_size) // step_size) + 1)
-
-        # reshape data: concatenate as single vector the samples coming from different sensors at the same index.
-        vectors = [np.empty((features_number * len(sensors_list), samples_number))]*3
-        for tank_id in tanks_list:
-            for sensor_id in sensors_list:
-                for feature in range(0, features_number):
-                    vectors[tank_id][sensor_id * features_number + feature] = \
-                                                arrays[sensor_id][tank_id][feature]
-
-        with open(dump_file_name[0], 'wb') as f:
-            pickle.dump((vectors, arrays, index_to_time), f, pickle.HIGHEST_PROTOCOL)
-
+def compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication):
     features_number = vectors[0].shape[0]
     samples_number  = vectors[0].shape[1]
 
-    try:
-        with open(dump_file_name[1], 'rb') as centroid_f, open(dump_file_name[2], 'rb') as reconstructed_f:
-            #print("loading centroids and reconstructed data...", end="")
-            centroids = pickle.load(centroid_f)
-            reconstructed_data = pickle.load(reconstructed_f)
-            #print("done")
-    except FileNotFoundError:
-        #print("computing centroids and reconstructed data...", end="")
-        centroids = [np.empty(features_number)]*len(tanks_list)
-        reconstructed_data = [np.empty(vectors[0].shape)]*len(tanks_list)
-        for tank_id in tanks_list:
-            try:
-                centroids[tank_id], reconstructed_data[tank_id] = \
-                                    cluster_data(vectors[tank_id], n_centers,
-                                                 max_iter, error, fuzzyfication)
-            except ZeroDivisionError:
-                print("--- WARNING division by 0 ---")
-                return False
-        #print("done")
-        with open(dump_file_name[1], 'wb') as centroid_f, open(dump_file_name[2], 'wb') as reconstructed_f:
-            pickle.dump(centroids, centroid_f, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(reconstructed_data, reconstructed_f, pickle.HIGHEST_PROTOCOL)
+    centroids = [np.empty(features_number)]*len(tanks_list)
+    reconstructed_data = [np.empty(vectors[0].shape)]*len(tanks_list)
+    for tank_id in tanks_list:
+        try:
+            centroids[tank_id], reconstructed_data[tank_id] = \
+                                cluster_data(vectors[tank_id], n_centers,
+                                           max_iter, error, fuzzyfication)
+        except ZeroDivisionError:
+            return None
 
-    try:
-        with open(dump_file_name[3], 'rb') as scores_f:
-            #print("loading anomaly scores...", end="")
-            anomaly_score = pickle.load(scores_f)
-            #print("done")
-    except FileNotFoundError:
-        anomaly_score = [np.empty(samples_number)]*len(tanks_list)
-        for tank_id in tanks_list:
-            for index in range(0, samples_number):
-                anomaly_score[tank_id][index] = \
-                        np.linalg.norm(vectors[tank_id][:,index] - reconstructed_data[tank_id][:,index])
+    anomaly_score = [np.empty(samples_number)]*len(tanks_list)
+    for tank_id in tanks_list:
+        for index in range(0, samples_number):
+            anomaly_score[tank_id][index] = \
+                    np.linalg.norm(vectors[tank_id][:,index] - reconstructed_data[tank_id][:,index])
 
-        with open(dump_file_name[3], 'wb') as scores_f:
-            pickle.dump((anomaly_score), scores_f, pickle.HIGHEST_PROTOCOL)
+    return anomaly_score
+
+
+def compute_autocorr_anomaly_score(auto_correlation_vectors, shape, autocorr_n_centers, autocorr_max_iter, autocorr_error, autocorr_fuzzyfication):
+    features_number = shape[0]
+    samples_number  = shape[1]
+
+    auto_correlation_centroids = [np.empty(features_number)]*len(tanks_list)
+    auto_correlation_reconstructed_data = [np.empty(shape)]*len(tanks_list)
+    for tank_id in tanks_list:
+       try:
+           auto_correlation_centroids[tank_id], auto_correlation_reconstructed_data[tank_id] = \
+                         cluster_data(auto_correlation_vectors[tank_id], autocorr_n_centers,
+                                      autocorr_max_iter, autocorr_error, autocorr_fuzzyfication)
+       except ZeroDivisionError:
+            return None
+
+    auto_correlation_anomaly_score = [np.empty(samples_number)]*len(tanks_list)
+    for tank_id in tanks_list:
+        for index in range(0, samples_number):
+            auto_correlation_anomaly_score[tank_id][index] = \
+                 np.linalg.norm(auto_correlation_vectors[tank_id][:,index] - \
+                                auto_correlation_reconstructed_data[tank_id][:,index])
 
     for tank_id in tanks_list:
-        anomaly_mean = np.mean(anomaly_score[tank_id])
-        anomaly_var = np.var(anomaly_score[tank_id])
-        anomaly_score[tank_id] = (anomaly_score[tank_id] - anomaly_mean) / math.sqrt(anomaly_var)
+        anomaly_mean = np.mean(auto_correlation_anomaly_score[tank_id])
+        anomaly_var = np.var(auto_correlation_anomaly_score[tank_id])
+        auto_correlation_anomaly_score[tank_id] = \
+                (auto_correlation_anomaly_score[tank_id] - anomaly_mean) / \
+                math.sqrt(anomaly_var)
 
-    # SECOND PART: compute distances based on auto-correlation.
-    #print("\n\n--------- AUTO CORRELATION ---------")
-    try:
-        with open(dump_file_name[4], 'rb') as f:
-            #print("auto-correlation anomaly scores...", end="")
-            auto_correlation_centroids, auto_correlation_reconstructed_data, \
-                auto_correlation_vectors, auto_correlation_anomaly_score = pickle.load(f)
-            #print("done")
+    return auto_correlation_anomaly_score
 
-    except FileNotFoundError:
-        auto_correlation_centroids = [np.empty(features_number)]*len(tanks_list)
-        auto_correlation_reconstructed_data = [np.empty(vectors[0].shape)]*len(tanks_list)
+def dump_final_anomaly_scores(dump_file_name, anomaly_score, auto_correlation_anomaly_score, fusion_coefficient, samples_number):
+    final_anomaly_scores = [np.empty(samples_number)]*len(tanks_list)
+    for tank in tanks_list:
+        tank_min = float('nan')
+        tank_max = float('nan')
+        for sample in range(0, samples_number):
+            final_anomaly_scores[tank][sample] = (anomaly_score[tank][sample] * fusion_coefficient + \
+                 auto_correlation_anomaly_score[tank][sample]) / (fusion_coefficient + 1)
+            tank_min = min(final_anomaly_scores[tank][sample], tank_min)
+            tank_max = max(final_anomaly_scores[tank][sample], tank_max)
+        for sample in range(0, samples_number):
+            final_anomaly_scores[tank][sample] = (final_anomaly_scores[tank][sample] - tank_min) / (tank_max - tank_min)
 
-        auto_correlation_vectors = compute_autocorrelation_vectors(arrays)
-        for tank_id in tanks_list:
-            try:
-                auto_correlation_centroids[tank_id], auto_correlation_reconstructed_data[tank_id] = \
-                             cluster_data(auto_correlation_vectors[tank_id], autocorr_n_centers,
-                                          autocorr_max_iter, autocorr_error, autocorr_fuzzyfication)
-            except ZeroDivisionError:
-                print("--- WARNING division by 0 ---")
-                return False
-
-            auto_correlation_anomaly_score = [np.empty(samples_number)]*len(tanks_list)
-        for tank_id in tanks_list:
-            for index in range(0, samples_number):
-                auto_correlation_anomaly_score[tank_id][index] = \
-                     np.linalg.norm(auto_correlation_vectors[tank_id][:,index] - \
-                                    auto_correlation_reconstructed_data[tank_id][:,index])
-
-        for tank_id in tanks_list:
-            anomaly_mean = np.mean(auto_correlation_anomaly_score[tank_id])
-            anomaly_var = np.var(auto_correlation_anomaly_score[tank_id])
-            auto_correlation_anomaly_score[tank_id] = \
-                    (auto_correlation_anomaly_score[tank_id] - anomaly_mean) / \
-                    math.sqrt(anomaly_var)
-
-        with open(dump_file_name[4], 'wb') as auto_correlation_scores_f:
-            pickle.dump((auto_correlation_centroids, auto_correlation_reconstructed_data, \
-                         auto_correlation_vectors, auto_correlation_anomaly_score), \
-                        auto_correlation_scores_f, pickle.HIGHEST_PROTOCOL)
-
-    try:
-        with open(dump_file_name[5], 'rb') as f:
-            #print("loading final scores...", end="")
-            final_anomaly_scores = pickle.load(f)
-            #print("done")
-    except FileNotFoundError:
-        final_anomaly_scores = [np.empty(samples_number)]*len(tanks_list)
-        for tank in tanks_list:
-            tank_min = float('nan')
-            tank_max = float('nan')
-            for sample in range(0, samples_number):
-                final_anomaly_scores[tank][sample] = (anomaly_score[tank][sample] * fusion_coefficient + \
-                     auto_correlation_anomaly_score[tank][sample]) / (fusion_coefficient + 1)
-                tank_min = min(final_anomaly_scores[tank][sample], tank_min)
-                tank_max = max(final_anomaly_scores[tank][sample], tank_max)
-            for sample in range(0, samples_number):
-                final_anomaly_scores[tank][sample] = (final_anomaly_scores[tank][sample] - tank_min) / (tank_max - tank_min)
-
-        with open(dump_file_name[5], 'wb') as final_scores_f:
-            pickle.dump(final_anomaly_scores, final_scores_f, pickle.HIGHEST_PROTOCOL)
-
-    #final_ranking = [np.flip(np.argsort(final_anomaly_scores[tank]), axis=0) for tank in tanks_list]
+    with open(dump_file_name, 'wb') as final_scores_f:
+        pickle.dump(final_anomaly_scores, final_scores_f, pickle.HIGHEST_PROTOCOL)
     return True
 
+
+def main(argv):
+    window_size_list = [40, 60, 80, 100]
+    step_size_list = [6, 8, 12, 16, 20, 24, 28]
+    n_centers_list = [2, 3, 5]
+    fuzzyfication_list = [1, 2, 3]
+
+    fusion_coefficient_list = [0.5, 1, 1.5]
+
+    max_iter = 1000
+    error = 0.005
+
+    loaded_data = load_data()
+
+    for window_size in window_size_list:
+        for step_size in step_size_list:
+            dirname = './windowsize_{}/stepsize_{}/'.format(window_size, step_size)
+            pathlib.Path(dirname).mkdir(parents=True, exist_ok=True)
+            print("\nIn: {}\n\tnp_arrays...".format(dirname), end="", flush=True)
+            arrays, _ = get_np_arrays(loaded_data, window_size, step_size)
+            print("done", flush=True)
+
+            features_number = arrays[0][0].shape[0]
+            samples_number  = arrays[0][0].shape[1]
+
+            assert(features_number == window_size)
+            assert(samples_number == ((loaded_data.measures.size() - window_size) // step_size) + 1)
+
+            # reshape data: concatenate as single vector the samples coming from different sensors at the same index.
+            vectors = [np.empty((features_number * len(sensors_list), samples_number))]*3
+            for tank_id in tanks_list:
+                for sensor_id in sensors_list:
+                    for feature in range(0, features_number):
+                        vectors[tank_id][sensor_id * features_number + feature] = \
+                                                    arrays[sensor_id][tank_id][feature]
+
+            auto_correlation_vectors = compute_autocorrelation_vectors(arrays)
+
+            features_number = vectors[0].shape[0]
+            samples_number  = vectors[0].shape[1]
+
+            for n_centers in n_centers_list:
+                for fuzzyfication in fuzzyfication_list:
+                    print("\t{} centers; {} fuzzyfication...".format(n_centers, fuzzyfication), end="", flush=True)
+                    anomaly_score = None
+                    auto_correlation_anomaly_score = None
+
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        anomaly_score_future = executor.submit(compute_anomaly_score, vectors, n_centers, max_iter, error, fuzzyfication)
+                        autocorr_future = executor.submit(compute_autocorr_anomaly_score,
+                                                          auto_correlation_vectors, vectors[0].shape,
+                                                          n_centers, max_iter, error, fuzzyfication)
+                        anomaly_score = anomaly_score_future.result()
+                        auto_correlation_anomaly_score = autocorr_future.result()
+
+                    if anomaly_score is None:
+                        print("issue with anomaly scores")
+                        continue
+                    if auto_correlation_anomaly_score is None:
+                        print("issue with autocorrelation anomaly scores")
+                        continue
+
+                    print("done", flush=True)
+
+                    with ThreadPoolExecutor(max_workers=len(fusion_coefficient_list)) as executor:
+                        dump_file_name_format = dirname + 'centers{}_fuzzyfication{}_fusion_coefficient{}.dump'
+                        futures = [executor.submit(dump_final_anomaly_scores, \
+                                                   dump_file_name_format.format(n_centers, fuzzyfication, fusion_coefficient), \
+                                                   anomaly_score, \
+                                                   auto_correlation_anomaly_score, \
+                                                   fusion_coefficient, \
+                                                   samples_number) \
+                                   for fusion_coefficient in fusion_coefficient_list]
+                        for future in futures:
+                            future.result()
 
 if __name__ == "__main__":
     main(sys.argv)
