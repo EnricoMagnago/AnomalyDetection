@@ -1,18 +1,18 @@
 {
 	"parameters":{
 		"dataset":{
-			"path": "../../dataset",
+			"path": "./dataset",
 			"load_size": 1000,
-			"tank":1,
+			"tank":0,
 			"sensor_type":0,
 			"power_type":-1
 
 		},
 		"sax":{
-			"alphabet_size":4,
+			"alphabet_size":5,
 			"paa_size":20,
-			"window_size":100,
-			"step":5,
+			"window_size":40,
+			"step":100,
 			"substring_size":4
 		},
 		"smoothing":{
@@ -20,7 +20,7 @@
 		},
 		"random_projections":{
 			"prj_size": 2,
-			"prj_iterations":4,
+			"prj_iterations":5,
 			"anomaly_threshold":0.15
 		}
 	}
