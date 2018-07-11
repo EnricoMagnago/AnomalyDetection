@@ -293,7 +293,7 @@ def run_with_config(parameters, data, id):
         if os.path.isfile(anomaly_file):
                 return
 
-        with open(anomaly_file, 'wb') as f:
+        with open(anomaly_file, 'xwb') as f:
                 sensor_type = parameters ['sensor_type']
                 power_type = parameters ['power_type']
 
@@ -428,7 +428,10 @@ def main(argv):
                         anomaly_file = ""
                         create_directories()
                 print("executing {}....".format(id))
-                run_with_config(parameters, data, id)
+                try:
+                        run_with_config(parameters, data, id)
+                except:
+                        print("exception in {}, with params: {}".format(id, parameters))
                 print("done")
 
 
