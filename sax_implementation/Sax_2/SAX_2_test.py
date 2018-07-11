@@ -14,11 +14,10 @@ import datetime
 import pickle
 import os
 import fnmatch
+import time
 sys.path.insert(0, "../../data_import/python_interface")
 import DataLoader
 import DataTypes
-from concurrent.futures import ThreadPoolExecutor
-
 
 
 path_conf = './Configurations/'
@@ -172,7 +171,6 @@ def put_in_bucket(hash_table_substring, string_smoothed, begin_window, prj_itera
         not_overlapping_substrings = len(string_smoothed) // substring_size
 
         random_positions_it = get_random_positions(prj_size, substring_size, prj_iterations)
-
         for random_positions in random_positions_it:
                 begin_in_serie = begin_window
 
@@ -198,7 +196,6 @@ def put_in_bucket(hash_table_substring, string_smoothed, begin_window, prj_itera
 
                         #new start in the original serie becomes the previous end
                         begin_in_serie = end_in_serie
-
         return hash_table_substring
 
 def analyzed_bucket(hash_table_substring, total_elements, anomaly_threshold):
@@ -212,13 +209,13 @@ def analyzed_bucket(hash_table_substring, total_elements, anomaly_threshold):
         return bucket_with_anomalies, bucket_freq
 
 def get_unique_tuple(hash_table_substrings):
-        unique_tuple = []
+        unique_tuple = set()
         for key, values in hash_table_substrings.items():
                 if values:
                         for tup in values:
-                                unique_tuple.append(tup)
+                                unique_tuple.add(tup)
 
-        return set(unique_tuple)
+        return unique_tuple
 
 def getting_score (hash_table_substrings, buckets_with_anomalies, n_buckets_anomalies):
         unique_tuple = get_unique_tuple(hash_table_substrings)
@@ -251,33 +248,34 @@ def config_gen_combinatorial():
         parameters = {}
         parameters ['power_type'] = -1
         sensors_list = range(0, 5)
-        alphabet_size_list = [3, 5, 7, 10, 15]
-        substring_size_list = [5, 7, 9]
-        paa_size_list = [10, 20, 30, 40]
+        alphabet_size_list = [3, 5]
+        substring_size_list = [5, 7]
+        paa_size_list = [10, 30]
 
-        window_size_list = [20, 40, 60, 80, 100]
-        step_size_list = [25, 50, 75, 100, 110, 120]
+        window_size_list = [50, 75, 100]
+        step_size_list = [40, 70]
 
-        threshold_freq_list = [0.6, 0.7, 0.8]
-        prj_size_list = [2, 3, 4]
-        prj_iterations_list = [3, 5, 7]
-        anomaly_threshold_list = [0.1, 0.15, 0.2]
+        threshold_freq_list = [0.7]
+        prj_size_list = [2, 3]
+        prj_iterations_list = [3]
+        anomaly_threshold_list = [0.15]
 
         for sensor_id in sensors_list:
                 parameters ['sensor_type'] = sensor_id
                 for alphabet_size in alphabet_size_list:
                         parameters['alphabet_size'] = alphabet_size
-                        for paa_size in paa_size_list:
-                                parameters['paa_size'] = paa_size
-                                for window_size in window_size_list:
-                                        parameters['window_size'] = window_size
+                        for window_size in window_size_list:
+                                parameters['window_size'] = window_size
+                                for paa_size in [x for x in paa_size_list if x < window_size]:
+                                        parameters['paa_size'] = paa_size
                                         for step_size in step_size_list:
                                                 parameters['step'] = step_size
                                                 for substring_size in substring_size_list:
                                                         parameters['substring_size'] = substring_size
                                                         for threshold_freq in threshold_freq_list:
                                                                 parameters['threshold_freq'] = threshold_freq
-                                                                for prj_size in prj_size_list:
+                                                                for prj_size in [x for x in prj_size_list if x < alphabet_size and \
+                                                                                 substring_size / x > 2]:
                                                                         parameters['prj_size'] = prj_size
                                                                         for prj_it in prj_iterations_list:
                                                                                 parameters ['prj_iterations'] = prj_it
@@ -289,127 +287,112 @@ def config_gen_combinatorial():
 
 
 
-def run_with_config(parameters, data):
-        if "dump_file" in parameters:
-                anomaly_file = parameters["dump_file"]
-                # create directories
-                os.makedirs(os.path.dirname(anomaly_file), exist_ok=True)
-        else:
-                assert False
-                anomaly_file = ""
-                create_directories()
+def run_with_config(parameters, data, id):
+        anomaly_file = parameters["dump_file"]
+        # already computed.
+        if os.path.isfile(anomaly_file):
+                return
 
-        sensor_type = parameters ['sensor_type']
-        power_type = parameters ['power_type']
+        with open(anomaly_file, 'wb') as f:
+                sensor_type = parameters ['sensor_type']
+                power_type = parameters ['power_type']
 
 
-        #SAX
-        alphabet_size = parameters['alphabet_size']
-        paa_size = parameters['paa_size']
-        window_size = parameters['window_size']
-        step = parameters['step']
-        substring_size = parameters['substring_size']
+                #SAX
+                alphabet_size = parameters['alphabet_size']
+                paa_size = parameters['paa_size']
+                window_size = parameters['window_size']
+                step = parameters['step']
+                substring_size = parameters['substring_size']
 
-        #smoothing
-        threshold_freq = parameters['threshold_freq']
+                #smoothing
+                threshold_freq = parameters['threshold_freq']
 
-        #projections
-        prj_size = parameters['prj_size']
-        prj_iterations = parameters ['prj_iterations']
-        anomaly_threshold = parameters['anomaly_threshold']
+                #projections
+                prj_size = parameters['prj_size']
+                prj_iterations = parameters ['prj_iterations']
+                anomaly_threshold = parameters['anomaly_threshold']
 
-        #list containg score for each window
-        anomalies_score = [None]
-        #n_iterations values = {3,6} tanks or powers
-        n_iterations = 0
-        #file to save
-        #getting first n alphabet letters
-        alphabet = get_alphabet_letters(alphabet_size)
+                #list containg score for each window
+                anomalies_score = [None]
+                #n_iterations values = {3,6} tanks or powers
+                n_iterations = 0
+                #file to save
+                #getting first n alphabet letters
+                alphabet = get_alphabet_letters(alphabet_size)
 
-        if power_type == -1 and sensor_type != -1:
-                n_iterations = 3
-                anomalies_score = [[],[],[]]
-                if anomaly_file == "":
-                        anomaly_file = (path_result+"Sensor_{}/anomalies_window_{}_step_{}.dump").format(sensor_type, window_size, step)
-        elif power_type != -1 and sensor_type == -1:
-                anomalies_score = [[],[],[],[],[],[]]
-                n_iterations = 6
-                if anomaly_file == "":
-                        anomaly_file = (path_result+"Power_{}/anomalies_window_{}_step_{}.dump").format(power_type, window_size, step)
-        else:
-                print("Error during establishing which values (tanks or powers) to load")
-                exit(1)
+                if power_type == -1 and sensor_type != -1:
+                        n_iterations = 3
+                        anomalies_score = [[],[],[]]
+                else:
+                        print("Error during establishing which values (tanks or powers) to load")
+                        exit(1)
 
 
-        for i in range(n_iterations):
-                score = []
+                for i in range(n_iterations):
+                        print("\t{} -> tank: {}".format(id, i))
+                        score = []
 
-                if n_iterations == 3:
                         tank = i
                         #print(data.measures[0])
                         #print("Loading of %i tank %i  data from %s to %s " % (sensor_type, tank, begin_date, end_date))
                         s_values = [data.measures[j][0][tank][sensor_type] for j in range(0, len(data.measures))]
-                elif n_iterations == 6:
-                        #print("Loading measures of power %i from %s to %s " % (power_type, begin_date, end_date))
-                        s_values = [data.measures[j][1][power_type] for j in range(0, len(data.measures))]
 
 
-                len_serie = len(s_values)
-                hash_table_substrings = {}
+                        len_serie = len(s_values)
+                        hash_table_substrings = {}
 
 
-                #creating hash table indexed by all of substrings of length k
-                hash_table_substrings = get_hash_table(alphabet, prj_size)
+                        #creating hash table indexed by all of substrings of length k
+                        hash_table_substrings = get_hash_table(alphabet, prj_size)
+                        print("\t\titer: {}/{}".format(0, len_serie / step))
+                        last_time = time.time()
+                        for index in range(0,len_serie,step):
+                                if time.time() - last_time > 20:
+                                        print("\t\titer: {}/{}".format(index / step, len_serie / step))
+                                        last_time = time.time()
+                                begin = index
+                                end = begin + window_size
+
+                                if end < len_serie:
+                                        window_values = s_values[begin:end]
+                                        window_znorm = znorm(window_values)
+                                        window_paa = paa(window_znorm, paa_size)
+                                        window_string = ts_to_string(window_paa, cuts_for_asize(alphabet_size))
+
+                                        #each character of the string corresponds to k values of the series
+                                        k = window_size//paa_size
 
 
-                for index in range(0,len_serie,step):
-                        #print("" +str(index) + "/"+ str(len_serie))
-                        begin = index
-                        end = begin + window_size
+                                        #get smoothed string
+                                        window_smoothed = smoothing(window_string, threshold_freq)
 
-                        if end < len_serie:
-                                window_values = s_values[begin:end]
-                                window_znorm = znorm(window_values)
-                                window_paa = paa(window_znorm, paa_size)
-                                window_string = ts_to_string(window_paa, cuts_for_asize(alphabet_size))
+                                        #fill hash table by applying random projection
+                                        hash_table_substrings = \
+                                                put_in_bucket(hash_table_substrings, window_smoothed, begin, prj_iterations, \
+                                                              prj_size, substring_size, k)
 
+                                        total = 0
+                                        for _, values in hash_table_substrings.items():
+                                                total = total + len(values)
 
-                                #each character of the string corresponds to k values of the series
-                                k = window_size//paa_size
+                                        buckets_with_anomalies, bucket_freq = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
+                                        #number of bucket with anomalies
+                                        n_buckets_anomalies = len(buckets_with_anomalies.keys())
 
-
-                                #get smoothed string
-                                window_smoothed = smoothing(window_string, threshold_freq)
-
-
-                                #fill hash table by applying random projection
-                                hash_table_substrings = \
-                                        put_in_bucket(hash_table_substrings, window_smoothed, begin, prj_iterations, \
-                                                      prj_size, substring_size, k)
-
-                                total = 0
-                                for _, values in hash_table_substrings.items():
-                                        total = total + len(values)
-
-                                buckets_with_anomalies, bucket_freq = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
-                                #number of bucket with anomalies
-                                n_buckets_anomalies = len(buckets_with_anomalies.keys())
-
-                                #getting score for current window
-                                avg_window_score = getting_score(hash_table_substrings, buckets_with_anomalies, n_buckets_anomalies)
-                                score.append(avg_window_score)
+                                        #getting score for current window
+                                        avg_window_score = getting_score(hash_table_substrings, buckets_with_anomalies, n_buckets_anomalies)
+                                        score.append(avg_window_score)
 
 
-                                #reset table
-                                hash_table_substrings = get_hash_table(alphabet, prj_size)
+                                        #reset table
+                                        hash_table_substrings = get_hash_table(alphabet, prj_size)
 
-                        else:
-                                break
-                anomalies_score[i] = score
+                                else:
+                                        break
+                        anomalies_score[i] = score
 
-
-        with open(anomaly_file, 'wb') as f:
-                pickle.dump(anomalies_score, f, pickle.HIGHEST_PROTOCOL)
+                        pickle.dump(anomalies_score, f, pickle.HIGHEST_PROTOCOL)
 
 
 
@@ -435,12 +418,18 @@ def main(argv):
         #begin_date = datetime.datetime.fromtimestamp(data.index_to_time[0])
         #end_date = datetime.datetime.fromtimestamp(data.index_to_time[len(data.measures)-1])
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-                # submit jobs
-                executors = [executor.submit(run_with_config, parameters, data) for parameters in config_gen_combinatorial()]
-                # join threads
-                for executor in executors:
-                        executor.result()
+        futures = []
+        for id, parameters in enumerate(config_gen_combinatorial()):
+                if "dump_file" in parameters:
+                        anomaly_file = parameters["dump_file"]
+                        # create directories
+                        os.makedirs(os.path.dirname(anomaly_file), exist_ok=True)
+                else:
+                        anomaly_file = ""
+                        create_directories()
+                print("executing {}....".format(id))
+                run_with_config(parameters, data, id)
+                print("done")
 
 
 
