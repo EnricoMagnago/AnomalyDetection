@@ -142,17 +142,6 @@ def get_cartesian_list(alphabet, prj_size):
                 exit(1)
         return p
 
-
-def get_hash_table(alphabet, prj_size):
-        hash_table = {}
-        cartesian_list = get_cartesian_list(alphabet, prj_size)
-
-        #create keys for hash_table
-        for element in cartesian_list:
-                hash_table[element[0]+""+element[1]] = []
-        return(hash_table)
-
-
 def get_random_positions(prj_size, substring_size, prj_iterations):
         retval = [[0] * prj_size] * prj_iterations
         seq_gen = itertools.product(range(0,substring_size), repeat=prj_size)
@@ -166,8 +155,9 @@ def get_random_positions(prj_size, substring_size, prj_iterations):
         return retval
 
 
-def put_in_bucket(hash_table_substring, string_smoothed, begin_window, prj_iterations, prj_size, substring_size, k):
+def put_in_bucket(string_smoothed, begin_window, prj_iterations, prj_size, substring_size, k):
         #number of not overlapping substrings of size substring_size
+        hash_table_substring = {}
         not_overlapping_substrings = len(string_smoothed) // substring_size
 
         random_positions_it = get_random_positions(prj_size, substring_size, prj_iterations)
@@ -192,7 +182,10 @@ def put_in_bucket(hash_table_substring, string_smoothed, begin_window, prj_itera
                                 key_bucket = key_bucket + substring[position]
 
                         #append to the hash table a tuple <substring, start_index, end_index>
-                        (hash_table_substring[key_bucket]).append((substring, begin_in_serie, end_in_serie))
+                        if key_bucket in hash_table_substring:
+                                (hash_table_substring[key_bucket]).append((substring, begin_in_serie, end_in_serie))
+                        else:
+                                hash_table_substring[key_bucket] = [(substring, begin_in_serie, end_in_serie)]
 
                         #new start in the original serie becomes the previous end
                         begin_in_serie = end_in_serie
@@ -252,7 +245,7 @@ def config_gen_combinatorial():
         substring_size_list = [5, 7]
         paa_size_list = [10, 30]
 
-        window_size_list = [50, 75, 100]
+        window_size_list = [25, 50, 75]
         step_size_list = [40, 70]
 
         threshold_freq_list = [0.7]
@@ -291,107 +284,106 @@ def run_with_config(parameters, data, id):
         anomaly_file = parameters["dump_file"]
         # already computed.
         if os.path.isfile(anomaly_file):
+                print("file: {} already exists".format(anomaly_file))
                 return
 
-        with open(anomaly_file, 'xwb') as f:
-                sensor_type = parameters ['sensor_type']
-                power_type = parameters ['power_type']
+        sensor_type = parameters ['sensor_type']
+        power_type = parameters ['power_type']
 
 
-                #SAX
-                alphabet_size = parameters['alphabet_size']
-                paa_size = parameters['paa_size']
-                window_size = parameters['window_size']
-                step = parameters['step']
-                substring_size = parameters['substring_size']
+        #SAX
+        alphabet_size = parameters['alphabet_size']
+        paa_size = parameters['paa_size']
+        window_size = parameters['window_size']
+        step = parameters['step']
+        substring_size = parameters['substring_size']
 
-                #smoothing
-                threshold_freq = parameters['threshold_freq']
+        #smoothing
+        threshold_freq = parameters['threshold_freq']
 
-                #projections
-                prj_size = parameters['prj_size']
-                prj_iterations = parameters ['prj_iterations']
-                anomaly_threshold = parameters['anomaly_threshold']
+        #projections
+        prj_size = parameters['prj_size']
+        prj_iterations = parameters ['prj_iterations']
+        anomaly_threshold = parameters['anomaly_threshold']
 
-                #list containg score for each window
-                anomalies_score = [None]
-                #n_iterations values = {3,6} tanks or powers
-                n_iterations = 0
-                #file to save
-                #getting first n alphabet letters
-                alphabet = get_alphabet_letters(alphabet_size)
+        #list containg score for each window
+        anomalies_score = [None]
+        #n_iterations values = {3,6} tanks or powers
+        n_iterations = 0
+        #file to save
+        #getting first n alphabet letters
+        alphabet = get_alphabet_letters(alphabet_size)
 
-                if power_type == -1 and sensor_type != -1:
-                        n_iterations = 3
-                        anomalies_score = [[],[],[]]
-                else:
-                        print("Error during establishing which values (tanks or powers) to load")
-                        exit(1)
-
-
-                for i in range(n_iterations):
-                        print("\t{} -> tank: {}".format(id, i))
-                        score = []
-
-                        tank = i
-                        #print(data.measures[0])
-                        #print("Loading of %i tank %i  data from %s to %s " % (sensor_type, tank, begin_date, end_date))
-                        s_values = [data.measures[j][0][tank][sensor_type] for j in range(0, len(data.measures))]
+        if power_type == -1 and sensor_type != -1:
+                n_iterations = 3
+                anomalies_score = [[],[],[]]
+        else:
+                print("Error during establishing which values (tanks or powers) to load")
+                exit(1)
 
 
-                        len_serie = len(s_values)
-                        hash_table_substrings = {}
+        for i in range(n_iterations):
+                print("\t{} -> tank: {}".format(id, i))
+                score = []
+
+                tank = i
+                #print(data.measures[0])
+                #print("Loading of %i tank %i  data from %s to %s " % (sensor_type, tank, begin_date, end_date))
+                s_values = [data.measures[j][0][tank][sensor_type] for j in range(0, len(data.measures))]
 
 
-                        #creating hash table indexed by all of substrings of length k
-                        hash_table_substrings = get_hash_table(alphabet, prj_size)
-                        print("\t\titer: {}/{}".format(0, len_serie / step))
-                        last_time = time.time()
-                        for index in range(0,len_serie,step):
-                                if time.time() - last_time > 20:
-                                        print("\t\titer: {}/{}".format(index / step, len_serie / step))
-                                        last_time = time.time()
-                                begin = index
-                                end = begin + window_size
+                len_serie = len(s_values)
 
-                                if end < len_serie:
-                                        window_values = s_values[begin:end]
-                                        window_znorm = znorm(window_values)
-                                        window_paa = paa(window_znorm, paa_size)
-                                        window_string = ts_to_string(window_paa, cuts_for_asize(alphabet_size))
+                print("\t\titer: {}/{}".format(0, len_serie / step))
+                last_time = time.time()
+                for index in range(0,len_serie,step):
+                        if time.time() - last_time > 20:
+                                print("\t\titer: {}/{}".format(index / step, len_serie / step))
+                                last_time = time.time()
+                        begin = index
+                        end = begin + window_size
 
-                                        #each character of the string corresponds to k values of the series
-                                        k = window_size//paa_size
+                        if end < len_serie:
+                                window_values = s_values[begin:end]
+                                window_znorm = znorm(window_values)
+                                window_paa = paa(window_znorm, paa_size)
+                                window_string = ts_to_string(window_paa, cuts_for_asize(alphabet_size))
 
-
-                                        #get smoothed string
-                                        window_smoothed = smoothing(window_string, threshold_freq)
-
-                                        #fill hash table by applying random projection
-                                        hash_table_substrings = \
-                                                put_in_bucket(hash_table_substrings, window_smoothed, begin, prj_iterations, \
-                                                              prj_size, substring_size, k)
-
-                                        total = 0
-                                        for _, values in hash_table_substrings.items():
-                                                total = total + len(values)
-
-                                        buckets_with_anomalies, bucket_freq = analyzed_bucket(hash_table_substrings, total, anomaly_threshold)
-                                        #number of bucket with anomalies
-                                        n_buckets_anomalies = len(buckets_with_anomalies.keys())
-
-                                        #getting score for current window
-                                        avg_window_score = getting_score(hash_table_substrings, buckets_with_anomalies, n_buckets_anomalies)
-                                        score.append(avg_window_score)
+                                #each character of the string corresponds to k values of the series
+                                k = window_size//paa_size
 
 
-                                        #reset table
-                                        hash_table_substrings = get_hash_table(alphabet, prj_size)
+                                #get smoothed string
+                                window_smoothed = smoothing(window_string, threshold_freq)
 
-                                else:
-                                        break
-                        anomalies_score[i] = score
+                                #fill hash table by applying random projection
+                                hash_table_substrings = \
+                                        put_in_bucket(window_smoothed, begin, prj_iterations, \
+                                                      prj_size, substring_size, k)
 
+                                total = 0
+                                for _, values in hash_table_substrings.items():
+                                        total = total + len(values)
+
+                                buckets_with_anomalies, bucket_freq = \
+                                        analyzed_bucket(hash_table_substrings, \
+                                                        total, anomaly_threshold)
+
+                                #number of bucket with anomalies
+                                n_buckets_anomalies = len(buckets_with_anomalies.keys())
+
+                                #getting score for current window
+                                avg_window_score = \
+                                        getting_score(hash_table_substrings, \
+                                                      buckets_with_anomalies, \
+                                                      n_buckets_anomalies)
+
+                                score.append(avg_window_score)
+
+                        else:
+                                break
+                anomalies_score[i] = score
+                with open(anomaly_file, 'wb') as f:
                         pickle.dump(anomalies_score, f, pickle.HIGHEST_PROTOCOL)
 
 
@@ -428,10 +420,7 @@ def main(argv):
                         anomaly_file = ""
                         create_directories()
                 print("executing {}....".format(id))
-                try:
-                        run_with_config(parameters, data, id)
-                except:
-                        print("exception in {}, with params: {}".format(id, parameters))
+                run_with_config(parameters, data, id)
                 print("done")
 
 
