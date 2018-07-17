@@ -11,7 +11,7 @@ import time
 import math
 import pickle
 import pathlib
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 tanks_list = [DataTypes.TANK1, DataTypes.TANK2, DataTypes.TANK3]
 tanks_names = ["tank1", "tank2", "tank3"]
@@ -31,31 +31,31 @@ def data_index_from_window_index(window_index, window_number, step_size):
 
 def get_np_arrays(data, window_size, step_size):
     assert(data.measures.size() > window_size)
-    tanks_list =[DataTypes.TANK1, DataTypes.TANK2, DataTypes.TANK3]
+    tanks_list = [DataTypes.TANK1, DataTypes.TANK2, DataTypes.TANK3]
     window_number = ((data.measures.size() - window_size) // step_size) + 1
     nan_array = np.empty((window_size, window_number))
     nan_array[:] = np.nan
-    oxygen = [nan_array] * len(tanks_list)
-    nitrogen = [nan_array] * len(tanks_list)
-    sst = [nan_array] * len(tanks_list)
-    ammonia = [nan_array] * len(tanks_list)
-    flow = [nan_array] * len(tanks_list)
-    valve = [nan_array] * len(tanks_list)
+    oxygen = [nan_array.copy() for i in range(0, len(tanks_list))]
+    nitrogen = [nan_array.copy() for i in range(0, len(tanks_list))]
+    sst = [nan_array.copy() for i in range(0, len(tanks_list))]
+    ammonia = [nan_array.copy() for i in range(0, len(tanks_list))]
+    flow = [nan_array.copy() for i in range(0, len(tanks_list))]
+    valve = [nan_array.copy() for i in range(0, len(tanks_list))]
     for window_index in range(0, window_number):
         #if window_index % 10000 == 0:
             #print("window {}/{};".format(window_index, window_number))
-        avg_oxygen = [0] * len(tanks_list)
-        oxygen_counter = [0] * len(tanks_list)
-        avg_nitrogen = [0] * len(tanks_list)
-        nitrogen_counter = [0] * len(tanks_list)
-        avg_sst = [0] * len(tanks_list)
-        sst_counter = [0] * len(tanks_list)
-        avg_ammonia = [0] * len(tanks_list)
-        ammonia_counter = [0] * len(tanks_list)
-        avg_flow = [0] * len(tanks_list)
-        flow_counter = [0] * len(tanks_list)
-        avg_valve = [0] * len(tanks_list)
-        valve_counter = [0] * len(tanks_list)
+        avg_oxygen = [0 for i in range(0, len(tanks_list))]
+        oxygen_counter = [0 for i in range(0, len(tanks_list))]
+        avg_nitrogen = [0 for i in range(0, len(tanks_list))]
+        nitrogen_counter = [0 for i in range(0, len(tanks_list))]
+        avg_sst = [0 for i in range(0, len(tanks_list))]
+        sst_counter = [0 for i in range(0, len(tanks_list))]
+        avg_ammonia = [0 for i in range(0, len(tanks_list))]
+        ammonia_counter = [0 for i in range(0, len(tanks_list))]
+        avg_flow = [0 for i in range(0, len(tanks_list))]
+        flow_counter = [0 for i in range(0, len(tanks_list))]
+        avg_valve = [0 for i in range(0, len(tanks_list))]
+        valve_counter = [0 for i in range(0, len(tanks_list))]
         for index in range(0, window_size):
             # collect sum of values and their number to compute average.
             data_index = data_index_from_window_index(index, window_index, step_size)
@@ -97,7 +97,7 @@ def get_np_arrays(data, window_size, step_size):
                 valve[tank_id][index][window_index] = tank[DataTypes.VALVE] if 0 <= tank[DataTypes.VALVE] <= 200 else avg_valve[tank_id]
                 flow[tank_id][index][window_index] = tank[DataTypes.FLOW] if 0 <= tank[DataTypes.FLOW] <= 200 else avg_flow[tank_id]
     #print()
-    index_to_time = [0] * data.index_to_time.size()
+    index_to_time = [0 for i in range(0, data.index_to_time.size())]
     for i in range(0, data.index_to_time.size()):
         index_to_time[i] = DataLoader.time_to_string(data, i)
     return [oxygen, nitrogen, sst, ammonia, valve, flow], index_to_time
@@ -115,7 +115,7 @@ def compute_autocorrelation_vectors(data):
     windows_number = data[0][0].shape[1]
     #samples_number
     # for each window we compute a vector of features: different lags: lag in [1; window_length*sensors_number)
-    output = [np.empty((sensors_number * window_length - 1, windows_number), dtype=np.float64)] * tanks_number
+    output = [np.empty((sensors_number * window_length - 1, windows_number), dtype=np.float64) for i in range(0, tanks_number)]
     for tank_id in range(0, tanks_number):
         max_tank_val = float('-Inf')
         for window_id in range(0, windows_number):
@@ -164,7 +164,7 @@ def cluster_data(data, n_centers, max_iter, error, fuzzyfication):
     reconstructed = np.empty_like(data.T)
     for k in range(0, u.shape[1]):
         u_sum = np.sum(u[:, k], 0)
-        numerator = np.array([np.fmax((u[cluster_index, k]*centroids[cluster_index])/u_sum, \
+        numerator = np.array([np.fmax((u[cluster_index, k] * centroids[cluster_index])/u_sum, \
                                       np.finfo(np.float64).eps) \
                               for cluster_index in range(0, centroids.shape[0])])
         reconstructed[k] = np.sum(numerator, 0)
@@ -175,8 +175,8 @@ def compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication):
     features_number = vectors[0].shape[0]
     samples_number  = vectors[0].shape[1]
 
-    centroids = [np.empty(features_number)]*len(tanks_list)
-    reconstructed_data = [np.empty(vectors[0].shape)]*len(tanks_list)
+    centroids = [np.empty(features_number) for i in range(0, len(tanks_list))]
+    reconstructed_data = [np.empty(vectors[0].shape) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
         try:
             centroids[tank_id], reconstructed_data[tank_id] = \
@@ -185,7 +185,7 @@ def compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication):
         except ZeroDivisionError:
             return None
 
-    anomaly_score = [np.empty(samples_number)]*len(tanks_list)
+    anomaly_score = [np.empty(samples_number) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
         for index in range(0, samples_number):
             anomaly_score[tank_id][index] = \
@@ -198,8 +198,8 @@ def compute_autocorr_anomaly_score(auto_correlation_vectors, shape, autocorr_n_c
     features_number = shape[0]
     samples_number  = shape[1]
 
-    auto_correlation_centroids = [np.empty(features_number)]*len(tanks_list)
-    auto_correlation_reconstructed_data = [np.empty(shape)]*len(tanks_list)
+    auto_correlation_centroids = [np.empty(features_number) for i in range(0, len(tanks_list))]
+    auto_correlation_reconstructed_data = [np.empty(shape) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
        try:
            auto_correlation_centroids[tank_id], auto_correlation_reconstructed_data[tank_id] = \
@@ -208,7 +208,7 @@ def compute_autocorr_anomaly_score(auto_correlation_vectors, shape, autocorr_n_c
        except ZeroDivisionError:
             return None
 
-    auto_correlation_anomaly_score = [np.empty(samples_number)]*len(tanks_list)
+    auto_correlation_anomaly_score = [np.empty(samples_number) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
         for index in range(0, samples_number):
             auto_correlation_anomaly_score[tank_id][index] = \
@@ -225,7 +225,7 @@ def compute_autocorr_anomaly_score(auto_correlation_vectors, shape, autocorr_n_c
     return auto_correlation_anomaly_score
 
 def dump_final_anomaly_scores(dump_file_name, anomaly_score, auto_correlation_anomaly_score, fusion_coefficient, samples_number):
-    final_anomaly_scores = [np.empty(samples_number)]*len(tanks_list)
+    final_anomaly_scores = [np.empty(samples_number) for i in range(0, len(tanks_list))]
     for tank in tanks_list:
         tank_min = float('nan')
         tank_max = float('nan')
@@ -246,7 +246,7 @@ def main(argv):
     window_size_list = [40, 60, 80, 100]
     step_size_list = [6, 8, 12, 16, 20, 24, 28]
     n_centers_list = [2, 3, 5]
-    fuzzyfication_list = [1, 2, 3]
+    fuzzyfication_list = [2, 3]
 
     fusion_coefficient_list = [0.5, 1, 1.5]
 
@@ -270,7 +270,7 @@ def main(argv):
             assert(samples_number == ((loaded_data.measures.size() - window_size) // step_size) + 1)
 
             # reshape data: concatenate as single vector the samples coming from different sensors at the same index.
-            vectors = [np.empty((features_number * len(sensors_list), samples_number))]*3
+            vectors = [np.empty((features_number * len(sensors_list), samples_number)) for i in range(0, 3)]
             for tank_id in tanks_list:
                 for sensor_id in sensors_list:
                     for feature in range(0, features_number):
@@ -288,7 +288,7 @@ def main(argv):
                     anomaly_score = None
                     auto_correlation_anomaly_score = None
 
-                    with ThreadPoolExecutor(max_workers=2) as executor:
+                    with ProcessPoolExecutor(max_workers=2) as executor:
                         anomaly_score_future = executor.submit(compute_anomaly_score, vectors, n_centers, max_iter, error, fuzzyfication)
                         autocorr_future = executor.submit(compute_autocorr_anomaly_score,
                                                           auto_correlation_vectors, vectors[0].shape,
@@ -304,18 +304,13 @@ def main(argv):
                         continue
 
                     print("done", flush=True)
-
-                    with ThreadPoolExecutor(max_workers=len(fusion_coefficient_list)) as executor:
-                        dump_file_name_format = dirname + 'centers{}_fuzzyfication{}_fusion_coefficient{}.dump'
-                        futures = [executor.submit(dump_final_anomaly_scores, \
-                                                   dump_file_name_format.format(n_centers, fuzzyfication, fusion_coefficient), \
-                                                   anomaly_score, \
-                                                   auto_correlation_anomaly_score, \
-                                                   fusion_coefficient, \
-                                                   samples_number) \
-                                   for fusion_coefficient in fusion_coefficient_list]
-                        for future in futures:
-                            future.result()
+                    dump_file_name_format = dirname + 'centers{}_fuzzyfication{}_fusion_coefficient{}.dump'
+                    for fusion_coefficient in fusion_coefficient_list:
+                        name = dump_file_name_format.format(n_centers, fuzzyfication, fusion_coefficient)
+                        dump_final_anomaly_scores(name, anomaly_score, \
+                                                  auto_correlation_anomaly_score, \
+                                                  fusion_coefficient, \
+                                                  samples_number)
 
 if __name__ == "__main__":
     main(sys.argv)
