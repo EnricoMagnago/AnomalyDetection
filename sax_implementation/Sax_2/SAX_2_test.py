@@ -143,7 +143,7 @@ def get_cartesian_list(alphabet, prj_size):
         return p
 
 def get_random_positions(prj_size, substring_size, prj_iterations):
-        retval = [[0] * prj_size] * prj_iterations
+        retval = [[0 for i in range(0, prj_size)] for j in range(0, prj_iterations)]
         seq_gen = itertools.product(range(0,substring_size), repeat=prj_size)
         for i, item in enumerate(seq_gen):
             if i < prj_iterations:
