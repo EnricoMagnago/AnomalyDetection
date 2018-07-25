@@ -11,13 +11,14 @@ import time
 import math
 import pickle
 import pathlib
-from concurrent.futures import ProcessPoolExecutor
 
 tanks_list = [DataTypes.TANK1, DataTypes.TANK2, DataTypes.TANK3]
 tanks_names = ["tank1", "tank2", "tank3"]
 sensors_list = [DataTypes.OXYGEN, DataTypes.NITROGEN, DataTypes.SST, DataTypes.AMMONIA, DataTypes.VALVE, DataTypes.FLOW]
 sensors_names = ["oxygen", "nitrogen", "sst", "ammonia", "valve", "flow"]
 
+def sigmoid(x):
+    return 1/(1 + math.exp(-x))
 
 def load_data():
     retval = DataTypes.Data()
@@ -28,6 +29,33 @@ def load_data():
 
 def data_index_from_window_index(window_index, window_number, step_size):
     return (window_number * step_size) + window_index
+
+def group_anomalies(loaded_data, window_size, window_step):
+    tanks_number = 3
+    samples_number = loaded_data.measures.size()
+    assert(samples_number > window_size)
+    windows_number = ((samples_number - window_size) // window_step) + 1
+    retval = [[0] * windows_number] * tanks_number # each number represents the number of anomalies found in that window.
+    # extract list of window_ids to which each samples belongs.
+    map_sample_to_windows = [None] * samples_number
+    for sample_id in range(0, samples_number):
+        window_ids = []
+        # for every possible position of the sample in the window:
+        for window_index in range(0, min(sample_id, window_size), window_step):
+            window_ids.append((sample_id - window_index) // window_step)
+        map_sample_to_windows[sample_id] = window_ids
+    anomaly_idx = 0
+    for index in range(0, loaded_data.anomaly_indexes.size()):
+        sample_id = loaded_data.anomaly_indexes[index][0]
+        windows = map_sample_to_windows[sample_id]
+        anomalies = DataTypes.AnomaliesList(loaded_data.anomaly_indexes[index][1])
+        for anomaly_idx in range(0, anomalies.size()):
+            anomaly = anomalies[anomaly_idx]
+            for tank_id in range(0, anomaly.tanks.size()):
+                tank = anomaly.tanks[tank_id]
+                for window in windows:
+                    retval[tank][window] += 1
+    return retval
 
 def get_np_arrays(data, window_size, step_size):
     assert(data.measures.size() > window_size)
@@ -152,44 +180,75 @@ def compute_autocorrelation_vectors(data):
 
     return output
 
-
-def cluster_data(data, n_centers, max_iter, error, fuzzyfication):
+def cluster_data(data, n_centers, max_iter, error, fuzzyfication, window_anomalies):
     centroids, u, u0, d, _, iterations, fpc = fuzz.cluster.cmeans(data,
                                                                  n_centers,
                                                                  fuzzyfication,
                                                                  error=error,
                                                                  maxiter=max_iter,
                                                                  init=None)
+    assert u.shape[1] == len(window_anomalies), "u.shape[1] : {}; len(window_anomalies): {}".format(u.shape[1], len(window_anomalies))
+    anomalies_per_cluster = [0 for i in range(0, n_centers)]
+    for cluster_idx in range(0, n_centers):
+        total = 0
+        u_sum = np.sum(u[cluster_idx, :], 0)
+        for sample_idx in range(0, u.shape[1]):
+            anomalies_per_cluster[cluster_idx] = anomalies_per_cluster[cluster_idx] + (window_anomalies[sample_idx] * u[cluster_idx][sample_idx] / u_sum)
+            total = total + window_anomalies[sample_idx]
+        anomalies_per_cluster[cluster_idx] = anomalies_per_cluster[cluster_idx] / total
+
+    normal_clusters = []
+    anomaly_clusters = []
+    for cluster_idx in range(0, n_centers):
+        if sigmoid(anomalies_per_cluster[cluster_idx]) > 0.7:
+            anomaly_clusters.append(cluster_idx)
+        else:
+            normal_clusters.append(cluster_idx)
+
     u = u ** fuzzyfication
     reconstructed = np.empty_like(data.T)
+    anomaly_reconstructed = np.empty_like(data.T)
     for k in range(0, u.shape[1]):
-        u_sum = np.sum(u[:, k], 0)
+        u_sum = 0
+        for cluster_index in normal_clusters:
+            u_sum = u_sum + u[cluster_index][k]
+        anomaly_u_sum = 0
+        for cluster_index in anomaly_clusters:
+            anomaly_u_sum = anomaly_u_sum + u[cluster_index][k]
+        anomaly_num = np.array([np.fmax((u[cluster_index, k] * centroids[cluster_index])/anomaly_u_sum, \
+                                      np.finfo(np.float64).eps) \
+                              for cluster_index in anomaly_clusters])
         numerator = np.array([np.fmax((u[cluster_index, k] * centroids[cluster_index])/u_sum, \
                                       np.finfo(np.float64).eps) \
-                              for cluster_index in range(0, centroids.shape[0])])
+                              for cluster_index in normal_clusters])
         reconstructed[k] = np.sum(numerator, 0)
+        anomaly_reconstructed[k] = np.sum(numerator, 0)
 
-    return centroids, reconstructed.T
+    return centroids, reconstructed.T, anomaly_reconstructed.T
 
-def compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication):
+def compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication, window_anomalies):
     features_number = vectors[0].shape[0]
     samples_number  = vectors[0].shape[1]
 
     centroids = [np.empty(features_number) for i in range(0, len(tanks_list))]
     reconstructed_data = [np.empty(vectors[0].shape) for i in range(0, len(tanks_list))]
+    anomaly_reconstructed_data = [np.empty(vectors[0].shape) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
         try:
-            centroids[tank_id], reconstructed_data[tank_id] = \
+            centroids[tank_id], reconstructed_data[tank_id], anomaly_reconstructed_data[tank_id] = \
                                 cluster_data(vectors[tank_id], n_centers,
-                                           max_iter, error, fuzzyfication)
+                                             max_iter, error, fuzzyfication, window_anomalies[tank_id])
         except ZeroDivisionError:
             return None
 
     anomaly_score = [np.empty(samples_number) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
         for index in range(0, samples_number):
-            anomaly_score[tank_id][index] = \
-                    np.linalg.norm(vectors[tank_id][:,index] - reconstructed_data[tank_id][:,index])
+            score = np.linalg.norm(vectors[tank_id][:,index] - reconstructed_data[tank_id][:,index])
+            score = sigmoid(score)
+            an_score = np.linalg.norm(vectors[tank_id][:,index] - anomaly_reconstructed_data[tank_id][:,index])
+            an_score = sigmoid(an_score)
+            anomaly_score[tank_id][index] = max(score, 1 - an_score)
 
     for tank_id in tanks_list:
         anomaly_mean = np.mean(anomaly_score[tank_id])
@@ -200,26 +259,31 @@ def compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication):
     return anomaly_score
 
 
-def compute_autocorr_anomaly_score(auto_correlation_vectors, shape, autocorr_n_centers, autocorr_max_iter, autocorr_error, autocorr_fuzzyfication):
+def compute_autocorr_anomaly_score(auto_correlation_vectors, shape, autocorr_n_centers, autocorr_max_iter, autocorr_error, autocorr_fuzzyfication, window_anomalies):
     features_number = shape[0]
     samples_number  = shape[1]
 
     auto_correlation_centroids = [np.empty(features_number) for i in range(0, len(tanks_list))]
     auto_correlation_reconstructed_data = [np.empty(shape) for i in range(0, len(tanks_list))]
+    auto_correlation_anomaly_reconstructed_data = [np.empty(shape) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
        try:
-           auto_correlation_centroids[tank_id], auto_correlation_reconstructed_data[tank_id] = \
+           auto_correlation_centroids[tank_id], auto_correlation_reconstructed_data[tank_id], auto_correlation_anomaly_reconstructed_data[tank_id] = \
                          cluster_data(auto_correlation_vectors[tank_id], autocorr_n_centers,
-                                      autocorr_max_iter, autocorr_error, autocorr_fuzzyfication)
+                                      autocorr_max_iter, autocorr_error, autocorr_fuzzyfication, window_anomalies[tank_id])
        except ZeroDivisionError:
             return None
 
     auto_correlation_anomaly_score = [np.empty(samples_number) for i in range(0, len(tanks_list))]
     for tank_id in tanks_list:
         for index in range(0, samples_number):
-            auto_correlation_anomaly_score[tank_id][index] = \
-                 np.linalg.norm(auto_correlation_vectors[tank_id][:,index] - \
-                                auto_correlation_reconstructed_data[tank_id][:,index])
+            score = np.linalg.norm(auto_correlation_vectors[tank_id][:,index] - \
+                                   auto_correlation_reconstructed_data[tank_id][:,index])
+            score = sigmoid(score)
+            an_score = np.linalg.norm(auto_correlation_vectors[tank_id][:,index] - \
+                                   auto_correlation_anomaly_reconstructed_data[tank_id][:,index])
+            an_score = sigmoid(an_score)
+            auto_correlation_anomaly_score[tank_id][index] = max(score, 1 - an_score)
 
     for tank_id in tanks_list:
         anomaly_mean = np.mean(auto_correlation_anomaly_score[tank_id])
@@ -269,12 +333,17 @@ def main(argv):
             arrays, _ = get_np_arrays(loaded_data, window_size, step_size)
             print("done", flush=True)
 
+            print("\tload anomalies...", end="", flush=True)
+            window_anomalies = group_anomalies(loaded_data, window_size, step_size)
+            print("done", flush=True)
+
             features_number = arrays[0][0].shape[0]
             samples_number  = arrays[0][0].shape[1]
 
             assert(features_number == window_size)
             assert(samples_number == ((loaded_data.measures.size() - window_size) // step_size) + 1)
 
+            print("\tcreate vectors...", end="", flush=True)
             # reshape data: concatenate as single vector the samples coming from different sensors at the same index.
             vectors = [np.empty((features_number * len(sensors_list), samples_number)) for i in range(0, 3)]
             for tank_id in tanks_list:
@@ -285,22 +354,17 @@ def main(argv):
 
             auto_correlation_vectors = compute_autocorrelation_vectors(arrays)
 
+            print ("done", flush=True)
             features_number = vectors[0].shape[0]
             samples_number  = vectors[0].shape[1]
 
             for n_centers in n_centers_list:
                 for fuzzyfication in fuzzyfication_list:
                     print("\t{} centers; {} fuzzyfication...".format(n_centers, fuzzyfication), end="", flush=True)
-                    anomaly_score = None
-                    auto_correlation_anomaly_score = None
 
-                    with ProcessPoolExecutor(max_workers=2) as executor:
-                        anomaly_score_future = executor.submit(compute_anomaly_score, vectors, n_centers, max_iter, error, fuzzyfication)
-                        autocorr_future = executor.submit(compute_autocorr_anomaly_score,
-                                                          auto_correlation_vectors, vectors[0].shape,
-                                                          n_centers, max_iter, error, fuzzyfication)
-                        anomaly_score = anomaly_score_future.result()
-                        auto_correlation_anomaly_score = autocorr_future.result()
+                    anomaly_score = compute_anomaly_score(vectors, n_centers, max_iter, error, fuzzyfication, window_anomalies)
+                    auto_correlation_anomaly_score = compute_autocorr_anomaly_score(auto_correlation_vectors, vectors[0].shape, \
+                                                                                    n_centers, max_iter, error, fuzzyfication, window_anomalies)
 
                     if anomaly_score is None:
                         print("issue with anomaly scores")
