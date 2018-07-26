@@ -16,7 +16,10 @@ tank_color = ['r', 'g', 'b']
 tank_marker = ['x', 'o', 's']
 
 
-def gen_configuration():
+def gen_configuration(window_size_list=window_size_list, step_size_list=step_size_list, \
+                      threshold_list=threshold_list,
+                      n_centers_list=n_centers_list, fuzzyfication_list=fuzzyfication_list,\
+                      fusion_coefficient_list=fusion_coefficient_list):
     for window in window_size_list:
         for step in step_size_list:
             for n_clusters in n_centers_list:
@@ -104,9 +107,11 @@ def plots_for_each_config(evaluations):
 
     configurations_number = len(accuracies[0])
 
-    x = range(0, configurations_number)
+    figure_id = 0
 
-    acc_figure = plt.figure(1)
+    x = range(0, configurations_number)
+    figure_id += 1
+    acc_figure = plt.figure(figure_id)
     plt.title("Accuracy for each configuration")
     for tank_id in range(0, 3):
         plt.scatter(x, accuracies[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
@@ -116,7 +121,8 @@ def plots_for_each_config(evaluations):
     plt.ylabel('accuracy')
     plt.show()
 
-    prec_figure = plt.figure(2)
+    figure_id += 1
+    prec_figure = plt.figure(figure_id)
     plt.title("Precision for each configuration")
     for tank_id in range(0, 3):
         plt.scatter(x, precisions[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
@@ -126,7 +132,8 @@ def plots_for_each_config(evaluations):
     plt.ylabel('precision')
     plt.show()
 
-    recall_figure = plt.figure(3)
+    figure_id += 1
+    recall_figure = plt.figure(figure_id)
     plt.title("Recall for each configuration")
     for tank_id in range(0, 3):
         plt.scatter(x, recalls[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
@@ -136,7 +143,8 @@ def plots_for_each_config(evaluations):
     plt.ylabel('recall')
     plt.show()
 
-    L1_figure = plt.figure(4)
+    figure_id += 1
+    L1_figure = plt.figure(figure_id)
     plt.title("L1 distance for each configuration")
     for tank_id in range(0, 3):
         plt.scatter(x, l1s[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
@@ -145,7 +153,8 @@ def plots_for_each_config(evaluations):
     plt.ylabel('L1 distance')
     plt.show()
 
-    L2_figure = plt.figure(5)
+    figure_id += 1
+    L2_figure = plt.figure(figure_id)
     plt.title("L2 distance for each configuration")
     for tank_id in range(0, 3):
         plt.scatter(x, l1s[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
@@ -153,6 +162,129 @@ def plots_for_each_config(evaluations):
     plt.xlabel('configuration id')
     plt.ylabel('L2 distance')
     plt.show()
+
+def plots_for_clusters(evaluations, tank_id=1):
+    line_fmt = ['r+:', 'rx:', 'r*:', 'g+:', 'gx:', 'g*:', 'b+:', 'bx:', 'b*:']
+    legend_format = "w: {}, s: {},"
+    legend = []
+    figure_id = 0
+    window_sizes = [40, 80, 100]
+    step_sizes = [6, 16, 28]
+    threshold = 0.2
+    fuzzyfication = 2
+    fusion = 0.5
+    acc_scores = [[] for i in range(0, len(window_sizes)*len(step_sizes))]
+    prec_scores = [[] for i in range(0, len(window_sizes)*len(step_sizes))]
+    recall_scores = [[] for i in range(0, len(window_sizes)*len(step_sizes))]
+    evaluation = evaluations[tank_id]
+    for window_index, window_size in enumerate(window_sizes):
+        for step_index, step_size in enumerate(step_sizes):
+            index = window_index * len(step_sizes) + step_index
+            for cluster_index, config in enumerate(gen_configuration(window_size_list=[window_size], step_size_list=[step_size], \
+                                                                     threshold_list=[threshold],
+                                                                     fuzzyfication_list=[fuzzyfication], fusion_coefficient_list=[fusion])):
+                assert 0 <= cluster_index < len(n_centers_list), "index: {}, max: {}, config: {}".format(cluster_index, len(n_centers_list), config)
+                confusion_matrix, _ = get_evaluation(evaluation, *config)
+                acc, prec, recall = compute_accuracy_precision_recall(confusion_matrix)
+                acc_scores[index].append(acc)
+                prec_scores[index].append(prec)
+                recall_scores[index].append(recall)
+            legend.append(legend_format.format(window_size, step_size))
+
+    x = n_centers_list
+    for scores, name in zip([acc_scores, prec_scores, recall_scores], ["Accuracy", "Precision", "Recall"]):
+        assert len(scores) == len(line_fmt) == len(legend)
+        figure_id += 1
+        clusters_figure = plt.figure(figure_id)
+        plt.title("{} for different number of clusters in tank: {}".format(name, tank_id + 1))
+        for index, score in enumerate(scores):
+            plt.plot(x, score, line_fmt[index])
+        plt.legend(legend)
+        plt.xlabel('number of clusters')
+        plt.ylabel('{}'.format(name.lower()))
+        plt.show()
+
+def plots_for_windows(evaluations, tank_id=1):
+    line_fmt = ['r+:', 'rx:', 'r*:', 'g+:', 'gx:', 'g*:', 'b+:', 'bx:', 'b*:']
+    legend_format = "s: {}, c: {}"
+    legend = []
+    figure_id = 0
+    n_clusters = n_centers_list
+    step_sizes = [6, 16, 28]
+    threshold = 0.2
+    fuzzyfication = 2
+    fusion = 0.5
+    acc_scores = [[] for i in range(0, len(step_sizes)*len(n_clusters))]
+    prec_scores = [[] for i in range(0, len(step_sizes)*len(n_clusters))]
+    recall_scores = [[] for i in range(0, len(step_sizes)*len(n_clusters))]
+    evaluation = evaluations[tank_id]
+    for step_index, step_size in enumerate(step_sizes):
+        for cluster_index, n_cluster in enumerate(n_clusters):
+            index = step_index * len(n_clusters) + cluster_index
+            for window_index, config in enumerate(gen_configuration(step_size_list=[step_size], n_centers_list=[n_cluster], \
+                                                                    threshold_list=[threshold],
+                                                                    fuzzyfication_list=[fuzzyfication], fusion_coefficient_list=[fusion])):
+                assert 0 <= window_index < len(window_size_list), "index: {}, max: {}, config: {}".format(window_index, len(window_size_list), config)
+                confusion_matrix, _ = get_evaluation(evaluation, *config)
+                acc, prec, recall = compute_accuracy_precision_recall(confusion_matrix)
+                acc_scores[index].append(acc)
+                prec_scores[index].append(prec)
+                recall_scores[index].append(recall)
+            legend.append(legend_format.format(step_size, n_cluster))
+
+    x = window_size_list
+    for scores, name in zip([acc_scores, prec_scores, recall_scores], ["Accuracy", "Precision", "Recall"]):
+        assert len(scores) == len(line_fmt) == len(legend)
+        figure_id += 1
+        clusters_figure = plt.figure(figure_id)
+        plt.title("{} for different window sizes in tank: {}".format(name, tank_id + 1))
+        for index, score in enumerate(scores):
+            plt.plot(x, score, line_fmt[index])
+        plt.legend(legend)
+        plt.xlabel('window size')
+        plt.ylabel('{}'.format(name.lower()))
+        plt.show()
+
+def plots_for_steps(evaluations, tank_id=1):
+    line_fmt = ['r+:', 'rx:', 'r*:', 'g+:', 'gx:', 'g*:', 'b+:', 'bx:', 'b*:']
+    legend_format = "w: {}, c: {}"
+    legend = []
+    figure_id = 0
+    n_clusters = n_centers_list
+    window_sizes = [40, 80, 100]
+    threshold = 0.2
+    fuzzyfication = 2
+    fusion = 0.5
+    acc_scores = [[] for i in range(0, len(window_sizes)*len(n_clusters))]
+    prec_scores = [[] for i in range(0, len(window_sizes)*len(n_clusters))]
+    recall_scores = [[] for i in range(0, len(window_sizes)*len(n_clusters))]
+    evaluation = evaluations[tank_id]
+    for window_index, window_size in enumerate(window_sizes):
+        for cluster_index, n_cluster in enumerate(n_clusters):
+            index = window_index * len(n_clusters) + cluster_index
+            for step_index, config in enumerate(gen_configuration(window_size_list=[window_size], n_centers_list=[n_cluster], \
+                                                                  threshold_list=[threshold],
+                                                                  fuzzyfication_list=[fuzzyfication], fusion_coefficient_list=[fusion])):
+                assert 0 <= step_index < len(step_size_list), "index: {}, max: {}, config: {}".format(step_index, len(step_size_list), config)
+                confusion_matrix, _ = get_evaluation(evaluation, *config)
+                acc, prec, recall = compute_accuracy_precision_recall(confusion_matrix)
+                acc_scores[index].append(acc)
+                prec_scores[index].append(prec)
+                recall_scores[index].append(recall)
+            legend.append(legend_format.format(window_size, n_cluster))
+
+    x = step_size_list
+    for scores, name in zip([acc_scores, prec_scores, recall_scores], ["Accuracy", "Precision", "Recall"]):
+        assert len(scores) == len(line_fmt) == len(legend)
+        figure_id += 1
+        clusters_figure = plt.figure(figure_id)
+        plt.title("{} for different step sizes in tank: {}".format(name, tank_id + 1))
+        for index, score in enumerate(scores):
+            plt.plot(x, score, line_fmt[index])
+        plt.legend(legend)
+        plt.xlabel('window size')
+        plt.ylabel('{}'.format(name.lower()))
+        plt.show()
 
 
 
@@ -166,9 +298,14 @@ def main(argv):
 
     plots_for_each_config(evaluations)
 
+    for tank in range(0, 3):
+        plots_for_clusters(evaluations, tank)
 
-    best = find_best(evaluations[0])
-    dump_best_scores(best)
+    for tank in range(0, 3):
+        plots_for_windows(evaluations, tank)
+
+    for tank in range(0, 3):
+        plots_for_steps(evaluations)
 
 if __name__ == "__main__":
     main(sys.argv)
