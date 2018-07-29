@@ -23,10 +23,10 @@ def load_data():
 def confusion_matrices(anomaly_scores, window_anomalies, threshold):
     assert(len(window_anomalies) == len(anomaly_scores) == 3) # tanks number
     assert(len(window_anomalies[0]) == len(anomaly_scores[0]))
-    # row, column [0][0]: correctly classified anomalies
-    #             [0][1]: classified as anomaly but was not
-    #             [1][0]: classified as normal but was anomaly
-    #             [1][1]: correctly classified normal
+    # row, column [0][0]: correctly classified anomalies (TP)
+    #             [0][1]: classified as anomaly but was not (FP)
+    #             [1][0]: classified as normal but was anomaly (FN)
+    #             [1][1]: correctly classified normal (TN)
     confusion_matrix = [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]
 
     for tank_id in range(0, len(window_anomalies)):
@@ -110,8 +110,8 @@ def compute_scores(anomaly_scores, window_anomalies, threshold, expected_normal_
     for tank_id in range(0, len(window_anomalies)):
         accuracy = confusion_matrix[tank_id][0][0] + confusion_matrix[tank_id][1][1]
         accuracy = accuracy / (accuracy + confusion_matrix[tank_id][0][1] + confusion_matrix[tank_id][1][0])
-        precision = confusion_matrix[tank_id][0][0] / (confusion_matrix[tank_id][0][0] + confusion_matrix[tank_id][1][0])
-        recall = confusion_matrix[tank_id][0][0] / (confusion_matrix[tank_id][0][0] + confusion_matrix[tank_id][0][1])
+        precision = confusion_matrix[tank_id][0][0] / (confusion_matrix[tank_id][0][0] + confusion_matrix[tank_id][0][1])
+        recall = confusion_matrix[tank_id][0][0] / (confusion_matrix[tank_id][0][0] + confusion_matrix[tank_id][1][0])
         l1 = errors[tank_id][0]
         l2 = errors[tank_id][1]
         element = accuracy, precision, recall, l1, l2

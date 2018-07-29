@@ -34,17 +34,19 @@ def dump_confusion_matrix(confusion_matrix):
     print("C_normal\t{}\t{}".format(confusion_matrix[1][0], confusion_matrix[1][1]))
 
 def compute_accuracy_precision_recall(confusion_matrix):
-    # row, column [0][0]: correctly classified anomalies
-    #             [0][1]: classified as anomaly but was not
-    #             [1][0]: classified as normal but was anomaly
-    #             [1][1]: correctly classified normal
+    # row, column [0][0]: correctly classified anomalies (TP)
+    #             [0][1]: classified as anomaly but was not (FP)
+    #             [1][0]: classified as normal but was anomaly (FN)
+    #             [1][1]: correctly classified normal (TN)
     # accuracy:  correctly classified / total
     # precision: correct_anomalies / expected_anomalies
     # recall:    correct_anomalies / predicted_anomalies
     accuracy = confusion_matrix[0][0] + confusion_matrix[1][1]
     accuracy = accuracy / (accuracy + confusion_matrix[0][1] + confusion_matrix[1][0])
-    precision = confusion_matrix[0][0] / (confusion_matrix[0][0] + confusion_matrix[1][0])
-    recall = confusion_matrix[0][0] / (confusion_matrix[0][0] + confusion_matrix[0][1])
+    # TP / (TP + FP)
+    precision = confusion_matrix[0][0] / (confusion_matrix[0][0] + confusion_matrix[0][1])
+    # TP / (TP + FN)
+    recall = confusion_matrix[0][0] / (confusion_matrix[0][0] + confusion_matrix[1][0])
     return accuracy, precision, recall
 
 def get_evaluation(evaluations, window_size, step_size, threshold, n_clusters, fuzzyfication, fusion):
@@ -108,6 +110,7 @@ def plots_for_each_config(evaluations):
     configurations_number = len(accuracies[0])
 
     figure_id = 0
+    legend = ['tank1', 'tank2', 'tank3']
 
     x = range(0, configurations_number)
     figure_id += 1
@@ -116,7 +119,7 @@ def plots_for_each_config(evaluations):
     for tank_id in range(0, 3):
         plt.scatter(x, accuracies[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
     plt.ylim(0, 1)
-    plt.legend(['tank1', 'tank2', 'tank3'])
+    plt.legend(legend, loc='lower left', bbox_to_anchor=(0.9, 0.9))
     plt.xlabel('configuration id')
     plt.ylabel('accuracy')
     plt.show()
@@ -127,7 +130,7 @@ def plots_for_each_config(evaluations):
     for tank_id in range(0, 3):
         plt.scatter(x, precisions[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
     plt.ylim(0, 1)
-    plt.legend(['tank1', 'tank2', 'tank3'])
+    plt.legend(legend, loc='lower left', bbox_to_anchor=(0.9, 0.9))
     plt.xlabel('configuration id')
     plt.ylabel('precision')
     plt.show()
@@ -138,30 +141,30 @@ def plots_for_each_config(evaluations):
     for tank_id in range(0, 3):
         plt.scatter(x, recalls[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
     plt.ylim(0, 1)
-    plt.legend(['tank1', 'tank2', 'tank3'])
+    plt.legend(legend, loc='lower left', bbox_to_anchor=(0.9, 0.9))
     plt.xlabel('configuration id')
     plt.ylabel('recall')
     plt.show()
 
-    figure_id += 1
-    L1_figure = plt.figure(figure_id)
-    plt.title("L1 distance for each configuration")
-    for tank_id in range(0, 3):
-        plt.scatter(x, l1s[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
-    plt.legend(['tank1', 'tank2', 'tank3'])
-    plt.xlabel('configuration id')
-    plt.ylabel('L1 distance')
-    plt.show()
+    # figure_id += 1
+    # L1_figure = plt.figure(figure_id)
+    # plt.title("L1 distance for each configuration")
+    # for tank_id in range(0, 3):
+    #     plt.scatter(x, l1s[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
+    # plt.legend(['tank1', 'tank2', 'tank3'])
+    # plt.xlabel('configuration id')
+    # plt.ylabel('L1 distance')
+    # plt.show()
 
-    figure_id += 1
-    L2_figure = plt.figure(figure_id)
-    plt.title("L2 distance for each configuration")
-    for tank_id in range(0, 3):
-        plt.scatter(x, l1s[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
-    plt.legend(['tank1', 'tank2', 'tank3'])
-    plt.xlabel('configuration id')
-    plt.ylabel('L2 distance')
-    plt.show()
+    # figure_id += 1
+    # L2_figure = plt.figure(figure_id)
+    # plt.title("L2 distance for each configuration")
+    # for tank_id in range(0, 3):
+    #     plt.scatter(x, l1s[tank_id], s=10, c=tank_color[tank_id], marker=tank_marker[tank_id])
+    # plt.legend(['tank1', 'tank2', 'tank3'])
+    # plt.xlabel('configuration id')
+    # plt.ylabel('L2 distance')
+    # plt.show()
 
 def plots_for_clusters(evaluations, tank_id=1):
     line_fmt = ['r+:', 'rx:', 'r*:', 'g+:', 'gx:', 'g*:', 'b+:', 'bx:', 'b*:']
@@ -199,7 +202,8 @@ def plots_for_clusters(evaluations, tank_id=1):
         plt.title("{} for different number of clusters in tank: {}".format(name, tank_id + 1))
         for index, score in enumerate(scores):
             plt.plot(x, score, line_fmt[index])
-        plt.legend(legend)
+        plt.xlim(n_centers_list[0] - 0.2, n_centers_list[-1] + 0.7)
+        plt.legend(legend, loc='lower left', bbox_to_anchor=(0.82, 0.40))
         plt.xlabel('number of clusters')
         plt.ylabel('{}'.format(name.lower()))
         plt.show()
@@ -240,7 +244,8 @@ def plots_for_windows(evaluations, tank_id=1):
         plt.title("{} for different window sizes in tank: {}".format(name, tank_id + 1))
         for index, score in enumerate(scores):
             plt.plot(x, score, line_fmt[index])
-        plt.legend(legend)
+        plt.xlim(window_size_list[0] - 2 , window_size_list[-1] + 12)
+        plt.legend(legend, loc='lower left', bbox_to_anchor=(0.85, 0.40))
         plt.xlabel('window size')
         plt.ylabel('{}'.format(name.lower()))
         plt.show()
@@ -281,8 +286,9 @@ def plots_for_steps(evaluations, tank_id=1):
         plt.title("{} for different step sizes in tank: {}".format(name, tank_id + 1))
         for index, score in enumerate(scores):
             plt.plot(x, score, line_fmt[index])
-        plt.legend(legend)
-        plt.xlabel('window size')
+        plt.xlim(step_size_list[0] - 2 , step_size_list[-1] + 5)
+        plt.legend(legend, loc='lower left', bbox_to_anchor=(0.85, 0.40))
+        plt.xlabel('step size')
         plt.ylabel('{}'.format(name.lower()))
         plt.show()
 
@@ -296,16 +302,16 @@ def main(argv):
     with open(argv[1], 'rb') as f:
         evaluations = pickle.load(f)
 
-    plots_for_each_config(evaluations)
+    #plots_for_each_config(evaluations)
+
+    # for tank in range(0, 3):
+    #     plots_for_clusters(evaluations, tank)
+
+    # for tank in range(0, 3):
+    #     plots_for_windows(evaluations, tank)
 
     for tank in range(0, 3):
-        plots_for_clusters(evaluations, tank)
-
-    for tank in range(0, 3):
-        plots_for_windows(evaluations, tank)
-
-    for tank in range(0, 3):
-        plots_for_steps(evaluations)
+        plots_for_steps(evaluations, tank)
 
 if __name__ == "__main__":
     main(sys.argv)
